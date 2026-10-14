@@ -1,0 +1,842 @@
+# OrderDesk PK — Product Requirements Document (PRD)
+
+## 1. Product Overview
+
+### Product Name
+
+**OrderDesk PK**
+
+### Tagline
+
+**Manage Your WhatsApp & Instagram Orders in One Place**
+
+### Product Type
+
+SaaS (Software as a Service)
+
+### Target Market
+
+Small and medium-sized online businesses in Pakistan, especially:
+
+* Instagram clothing sellers
+* WhatsApp sellers
+* Home-based businesses
+* Cosmetics sellers
+* Perfume businesses
+* Shoe sellers
+* Mobile accessories sellers
+
+---
+
+# 2. Problem Statement
+
+Many small online businesses in Pakistan manage their orders manually through WhatsApp, Instagram, Facebook messages, notebooks, and Excel sheets.
+
+This creates several problems:
+
+* Orders get lost in chats
+* Customer information is difficult to find
+* Delivery status is hard to track
+* Payment records are not properly organized
+* Inventory is difficult to manage
+* Sales are difficult to calculate
+* Customer order history is unavailable
+
+Business owners need a simple and affordable system to manage their daily operations in one place.
+
+---
+
+# 3. Product Goal
+
+The goal of **OrderDesk PK** is to provide Pakistani online sellers with a simple and affordable platform where they can:
+
+* Manage orders
+* Manage customers
+* Manage products and inventory
+* Track payments
+* Track delivery status
+* View sales reports
+
+All from one centralized dashboard.
+
+---
+
+# 4. Target Users
+
+## Primary User: Business Owner
+
+A small online business owner who receives orders through WhatsApp, Instagram, or Facebook.
+
+For example:
+
+A clothing seller receiving 10–50 orders per day.
+
+The business owner needs to manage:
+
+* Orders
+* Customers
+* Products
+* Inventory
+* Payments
+
+---
+
+## Secondary User: Employee
+
+Businesses may also allow employees to access the system with limited permissions.
+
+Examples:
+
+* Order Manager
+* Sales Employee
+* Delivery Manager
+
+---
+
+# 5. User Roles
+
+## Admin / Business Owner
+
+The Admin has full access to:
+
+* Dashboard
+* Products
+* Customers
+* Orders
+* Inventory
+* Reports
+* Business Settings
+* Employees
+* Subscription
+
+---
+
+## Employee
+
+Employees have limited access based on their assigned permissions.
+
+Possible permissions:
+
+* View Orders
+* Create Orders
+* Update Order Status
+* View Customers
+
+Employees cannot manage business settings or subscriptions.
+
+---
+
+# 6. Authentication
+
+Users should be able to:
+
+* Sign Up
+* Login
+* Logout
+* Reset Password
+* Recover Forgotten Password
+
+### User Information
+
+During registration, collect:
+
+* Full Name
+* Email Address
+* Phone Number
+* Business Name
+* Password
+
+---
+
+# 7. Dashboard
+
+After logging in, users should see a business overview dashboard.
+
+### Dashboard Metrics
+
+* Today's Orders
+* Pending Orders
+* Confirmed Orders
+* Shipped Orders
+* Delivered Orders
+* Cancelled Orders
+* Today's Sales
+* Monthly Sales
+
+### Additional Dashboard Sections
+
+* Recent Orders
+* Low Stock Products
+* Top Selling Products
+* Sales Overview
+
+---
+
+# 8. Product Management
+
+Users should be able to add, edit, delete, and manage products.
+
+### Product Fields
+
+* Product Name
+* SKU
+* Category
+* Description
+* Selling Price
+* Cost Price
+* Stock Quantity
+* Product Image
+* Status
+
+### Product Status
+
+* Active
+* Inactive
+
+---
+
+# 9. Product Variants
+
+This feature is especially important for clothing businesses.
+
+Example:
+
+### Product: T-Shirt
+
+Available Sizes:
+
+* Small
+* Medium
+* Large
+* XL
+
+Each variant should have its own stock quantity.
+
+| Size   | Stock |
+| ------ | ----: |
+| Small  |    10 |
+| Medium |    15 |
+| Large  |     8 |
+| XL     |     5 |
+
+Future versions may also support color variants.
+
+Examples:
+
+* Black / Medium
+* White / Large
+* Blue / Small
+
+---
+
+# 10. Customer Management
+
+Users should be able to add and manage customers.
+
+### Customer Fields
+
+* Full Name
+* Phone Number
+* Email Address (Optional)
+* Address
+* City
+* Notes
+
+### Customer Profile
+
+Each customer profile should display:
+
+* Total Orders
+* Total Amount Spent
+* Order History
+* Last Order Date
+
+---
+
+# 11. Order Management
+
+Order Management is the core feature of OrderDesk PK.
+
+Users should be able to create and manage orders.
+
+### Order Information
+
+* Order Number
+* Customer
+* Products
+* Quantity
+* Product Price
+* Discount
+* Delivery Charges
+* Total Amount
+
+---
+
+## Order Status
+
+Orders can have the following statuses:
+
+* Pending
+* Confirmed
+* Processing
+* Shipped
+* Delivered
+* Cancelled
+
+---
+
+## Payment Status
+
+* Unpaid
+* Paid
+* Partial Payment
+
+---
+
+## Payment Methods
+
+* Cash on Delivery
+* Bank Transfer
+* EasyPaisa
+* JazzCash
+
+---
+
+# 12. Order Workflow
+
+A typical order workflow will be:
+
+**New Order**
+
+↓
+
+**Pending**
+
+↓
+
+**Confirmed**
+
+↓
+
+**Processing**
+
+↓
+
+**Shipped**
+
+↓
+
+**Delivered**
+
+If the customer cancels the order:
+
+**Cancelled**
+
+---
+
+# 13. Inventory Management
+
+The system should automatically update inventory when products are sold.
+
+### Example
+
+Current Stock:
+
+20 Units
+
+Customer Orders:
+
+3 Units
+
+Updated Stock:
+
+17 Units
+
+---
+
+## Low Stock Alerts
+
+The system should notify the business owner when product stock reaches a low level.
+
+Example:
+
+> Low Stock Alert: Black T-Shirt has only 3 items remaining.
+
+---
+
+# 14. Sales Reports
+
+Business owners should be able to view business performance reports.
+
+### Reports Include
+
+* Daily Sales
+* Weekly Sales
+* Monthly Sales
+* Total Revenue
+* Total Orders
+* Delivered Orders
+* Cancelled Orders
+* Best Selling Products
+
+---
+
+# 15. WhatsApp Order Confirmation
+
+After creating or confirming an order, the user should be able to send an order confirmation message through WhatsApp.
+
+### Example Message
+
+Hello {Customer Name},
+
+Your order has been successfully confirmed. ✅
+
+Order Number: #{Order Number}
+
+Total Amount: Rs. {Total}
+
+Payment Method: {Payment Method}
+
+Thank you for shopping with us!
+
+---
+
+# 16. Invoice Generation
+
+The system should generate an invoice for every order.
+
+### Invoice Details
+
+* Business Name
+* Business Contact Information
+* Customer Name
+* Order Number
+* Products
+* Quantity
+* Total Amount
+* Payment Status
+
+### Future Features
+
+* Download Invoice as PDF
+* Print Invoice
+
+---
+
+# 17. Notifications
+
+The system should display important notifications.
+
+Examples:
+
+* New Order Created
+* Low Stock Alert
+* Order Delivered
+* Payment Received
+
+---
+
+# 18. Search and Filters
+
+The Orders page should include search and filtering functionality.
+
+### Filters
+
+* Order Status
+* Payment Status
+* Date Range
+* Customer
+* City
+
+### Search Options
+
+Users should be able to search using:
+
+* Customer Name
+* Phone Number
+* Order Number
+
+---
+
+# 19. Pricing and Subscription
+
+## Free Trial
+
+**7 Days Free**
+
+---
+
+## Basic Plan
+
+**PKR 1,500 / Month**
+
+Includes:
+
+* Up to 100 Orders
+* Customer Management
+* Product Management
+* Basic Reports
+
+---
+
+## Pro Plan
+
+**PKR 3,000 / Month**
+
+Includes:
+
+* Unlimited Orders
+* Inventory Management
+* Advanced Reports
+* Product Variants
+* Invoice Generation
+* Priority Support
+
+---
+
+# 20. Technology Stack
+
+## Frontend
+
+* React
+* Vite
+* Tailwind CSS
+* Shadcn UI
+
+---
+
+## Backend
+
+* Supabase
+
+### Supabase Services
+
+* Authentication
+* PostgreSQL Database
+* Storage
+* Row Level Security
+
+---
+
+# 21. Database Structure
+
+## Profiles
+
+| Column        | Type      |
+| ------------- | --------- |
+| id            | UUID      |
+| full_name     | Text      |
+| business_name | Text      |
+| phone         | Text      |
+| created_at    | Timestamp |
+
+---
+
+## Customers
+
+| Column     | Type      |
+| ---------- | --------- |
+| id         | UUID      |
+| user_id    | UUID      |
+| name       | Text      |
+| phone      | Text      |
+| email      | Text      |
+| address    | Text      |
+| city       | Text      |
+| notes      | Text      |
+| created_at | Timestamp |
+
+---
+
+## Products
+
+| Column      | Type      |
+| ----------- | --------- |
+| id          | UUID      |
+| user_id     | UUID      |
+| name        | Text      |
+| sku         | Text      |
+| description | Text      |
+| price       | Decimal   |
+| cost_price  | Decimal   |
+| stock       | Integer   |
+| category    | Text      |
+| image_url   | Text      |
+| status      | Text      |
+| created_at  | Timestamp |
+
+---
+
+## Product Variants
+
+| Column        | Type    |
+| ------------- | ------- |
+| id            | UUID    |
+| product_id    | UUID    |
+| variant_name  | Text    |
+| variant_value | Text    |
+| stock         | Integer |
+
+---
+
+## Orders
+
+| Column           | Type      |
+| ---------------- | --------- |
+| id               | UUID      |
+| user_id          | UUID      |
+| customer_id      | UUID      |
+| order_number     | Text      |
+| subtotal         | Decimal   |
+| discount         | Decimal   |
+| delivery_charges | Decimal   |
+| total_amount     | Decimal   |
+| order_status     | Text      |
+| payment_status   | Text      |
+| payment_method   | Text      |
+| created_at       | Timestamp |
+
+---
+
+## Order Items
+
+| Column     | Type    |
+| ---------- | ------- |
+| id         | UUID    |
+| order_id   | UUID    |
+| product_id | UUID    |
+| variant_id | UUID    |
+| quantity   | Integer |
+| price      | Decimal |
+| total      | Decimal |
+
+---
+
+# 22. Main Pages
+
+## Public Website
+
+* Home
+* Features
+* Pricing
+* About
+* Contact
+* Login
+* Sign Up
+
+---
+
+## Application Dashboard
+
+* Dashboard
+* Orders
+* Customers
+* Products
+* Inventory
+* Reports
+* Notifications
+* Settings
+* Subscription
+
+---
+
+# 23. User Journey
+
+### Step 1
+
+The user visits the OrderDesk PK website.
+
+↓
+
+### Step 2
+
+The user explores the features and pricing.
+
+↓
+
+### Step 3
+
+The user starts a free trial.
+
+↓
+
+### Step 4
+
+The user creates an account.
+
+↓
+
+### Step 5
+
+The user adds business information.
+
+↓
+
+### Step 6
+
+The user adds products.
+
+↓
+
+### Step 7
+
+The user manages customers and orders.
+
+↓
+
+### Step 8
+
+The user monitors sales and reports from the dashboard.
+
+↓
+
+### Step 9
+
+After the free trial ends, the user upgrades to a paid subscription.
+
+---
+
+# 24. Why Will Customers Buy OrderDesk PK?
+
+Customers will use OrderDesk PK because it solves real business problems.
+
+### Save Time
+
+Business owners will no longer need to search through WhatsApp chats or notebooks to find orders.
+
+### Reduce Mistakes
+
+Customer details and orders will be properly organized.
+
+### Better Business Tracking
+
+Owners can easily monitor sales, orders, and business performance.
+
+### Inventory Control
+
+Businesses can track stock and receive low-stock alerts.
+
+### Customer History
+
+Businesses can identify repeat customers and view their previous orders.
+
+---
+
+# 25. Unique Selling Proposition (USP)
+
+**OrderDesk PK is specifically designed for Pakistani WhatsApp and Instagram sellers.**
+
+### Main Marketing Message
+
+> Stop managing your business through WhatsApp chats, notebooks, and spreadsheets. Manage your orders, customers, products, and sales from one simple dashboard.
+
+---
+
+# 26. MVP Development Priority
+
+## Phase 1 — Authentication
+
+* Sign Up
+* Login
+* Logout
+* User Profile
+
+---
+
+## Phase 2 — Product Management
+
+* Add Product
+* Edit Product
+* Delete Product
+* Product List
+
+---
+
+## Phase 3 — Customer Management
+
+* Add Customer
+* Customer List
+* Customer Details
+
+---
+
+## Phase 4 — Order Management
+
+* Create Order
+* View Orders
+* Update Order Status
+* Update Payment Status
+
+---
+
+## Phase 5 — Dashboard
+
+* Business Statistics
+* Recent Orders
+* Sales Summary
+
+---
+
+## Phase 6 — Inventory
+
+* Stock Management
+* Automatic Stock Updates
+* Low Stock Alerts
+
+---
+
+## Phase 7 — Reports
+
+* Daily Reports
+* Weekly Reports
+* Monthly Reports
+* Best Selling Products
+
+---
+
+# 27. Success Metrics
+
+The product will be considered successful when:
+
+* The first 10 active businesses are acquired
+* Users regularly create and manage orders
+* Free trial users convert into paid customers
+* The platform generates recurring monthly revenue
+* Customers continue using the system for their daily business operations
+
+---
+
+# 28. Future Features
+
+Future versions may include:
+
+* Courier Integrations
+* Automated WhatsApp Notifications
+* Multiple Employee Accounts
+* Multiple Branches
+* Expense Management
+* Profit Calculation
+* Barcode Scanner
+* Mobile Application
+* Advanced Analytics
+* AI Sales Insights
+
+---
+
+# 29. Final Product Vision
+
+**OrderDesk PK aims to become a simple digital business management platform for small online sellers in Pakistan.**
+
+The platform will help businesses move from:
+
+**WhatsApp Chats + Notebooks + Excel Sheets**
+
+to:
+
+**One Simple Digital Dashboard**
+
+---
+
+## Final Vision Statement
+
+> **OrderDesk PK helps Pakistani online businesses simplify their daily operations by managing orders, customers, products, inventory, payments, and sales from one centralized platform.**
