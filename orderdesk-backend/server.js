@@ -4,16 +4,23 @@ import dotenv from "dotenv";
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
+import customerRoutes from "./routes/customerRoutes.js";
 
 dotenv.config();
 
+//initialize express app
 const app = express();
 
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
+app.use("/api/customers", customerRoutes);
 
+
+// Root route
 app.get("/", (req, res) => {
   res.json({
     message: "OrderDesk PK API is running",
