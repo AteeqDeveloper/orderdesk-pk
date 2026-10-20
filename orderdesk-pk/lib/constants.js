@@ -1,14 +1,12 @@
 export const ORDER_STATUSES = [
   "pending",
   "confirmed",
-  "processing",
   "shipped",
   "delivered",
   "cancelled",
-  "returned",
 ];
 
-export const PAYMENT_STATUSES = ["unpaid", "partial", "paid", "refunded"];
+export const PAYMENT_STATUSES = ["unpaid", "paid", "refunded"];
 
 export const PAYMENT_METHODS = [
   { value: "cash_on_delivery", label: "Cash on Delivery" },
@@ -33,7 +31,7 @@ export const PAKISTANI_CITIES = [
   "Hyderabad",
 ];
 
-export const PRODUCT_STATUSES = ["active", "draft", "archived"];
+export const PRODUCT_STATUSES = ["active", "inactive"];
 
 // Shown as <datalist> suggestions on the variant form — the columns stay
 // free text (variant_name/variant_value) so sellers aren't boxed in, but

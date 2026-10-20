@@ -56,7 +56,8 @@ export default function StockAdjustmentModal({ product, open, onClose, onUpdated
     setSubmitting(true);
     const { product: updatedProduct, error: updateError } = await updateProductStock(
       product.id,
-      stock
+      stock,
+      currentStock
     );
     setSubmitting(false);
 

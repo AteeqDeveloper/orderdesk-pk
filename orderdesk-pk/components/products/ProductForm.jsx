@@ -2,18 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ImageOff, Upload } from "lucide-react";
+import { ImageOff } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 import Select from "@/components/ui/Select";
 import Label, { FieldError } from "@/components/ui/Label";
 import { PRODUCT_STATUSES } from "@/lib/constants";
-import {
-  createProduct,
-  updateProduct,
-  uploadProductImage,
-} from "@/services/productService";
+import { createProduct, updateProduct } from "@/services/productService";
 
 function toFormState(product) {
   return {
@@ -39,7 +35,6 @@ export default function ProductForm({ userId, product, categories = [] }) {
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
 
   function handleChange(e) {
     setSuccessMessage("");
@@ -63,25 +58,6 @@ export default function ProductForm({ userId, product, categories = [] }) {
       nextErrors.low_stock_threshold = "Enter a whole number.";
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
-  }
-
-  async function handleImageChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    setFormError("");
-    const { url, error } = await uploadProductImage(userId, file);
-    setUploading(false);
-
-    if (error) {
-      setFormError(
-        "Image upload isn't available yet — you can paste an image URL below instead."
-      );
-      return;
-    }
-
-    setForm((prev) => ({ ...prev, image_url: url }));
   }
 
   async function handleSubmit(e) {
@@ -110,11 +86,7 @@ export default function ProductForm({ userId, product, categories = [] }) {
     setSaving(false);
 
     if (error) {
-      setFormError(
-        error.code === "23505"
-          ? "A product with this SKU already exists."
-          : "Couldn't save this product. Please try again."
-      );
+      setFormError(error.message || "Couldn't save this product. Please try again.");
       return;
     }
 
@@ -122,8 +94,7 @@ export default function ProductForm({ userId, product, categories = [] }) {
       setSuccessMessage("Product details saved successfully.");
       router.refresh();
     } else {
-      // Variants can only be added once a product exists, so send the
-      // seller straight to the edit page after creating it.
+      // Open the saved product so its details can be reviewed or edited.
       if (saved?.id) {
         router.push(`/dashboard/products/${saved.id}`);
       } else {
@@ -323,17 +294,9 @@ export default function ProductForm({ userId, product, categories = [] }) {
           </div>
 
           <div className="flex-1 space-y-2.5">
-            <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-ink-200 px-3.5 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50">
-              <Upload className="h-4 w-4" aria-hidden="true" />
-              {uploading ? "Uploading..." : "Upload image"}
-              <input
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={handleImageChange}
-                disabled={uploading}
-              />
-            </label>
+            <p className="text-sm text-ink-500">
+              File uploads are not supported by the backend yet.
+            </p>
 
             <Input
               name="image_url"

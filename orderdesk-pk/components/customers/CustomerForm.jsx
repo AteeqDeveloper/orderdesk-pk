@@ -35,6 +35,7 @@ export default function CustomerForm({ userId, customer, onSuccess, onCancel }) 
   function validate() {
     const nextErrors = {};
     if (!form.name.trim()) nextErrors.name = "Customer name is required.";
+    if (!form.phone.trim()) nextErrors.phone = "Customer phone is required.";
     if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) {
       nextErrors.email = "Enter a valid email address.";
     }
@@ -63,7 +64,7 @@ export default function CustomerForm({ userId, customer, onSuccess, onCancel }) 
     setSaving(false);
 
     if (error) {
-      setFormError("Couldn't save this customer. Please try again.");
+      setFormError(error.message || "Couldn't save this customer. Please try again.");
       return;
     }
 
@@ -98,7 +99,9 @@ export default function CustomerForm({ userId, customer, onSuccess, onCancel }) 
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <Label htmlFor="phone">Phone</Label>
+          <Label htmlFor="phone" required>
+            Phone
+          </Label>
           <Input
             id="phone"
             name="phone"
@@ -106,7 +109,9 @@ export default function CustomerForm({ userId, customer, onSuccess, onCancel }) 
             placeholder="03xx-xxxxxxx"
             value={form.phone}
             onChange={handleChange}
+            error={!!errors.phone}
           />
+          <FieldError message={errors.phone} />
         </div>
         <div>
           <Label htmlFor="email">Email</Label>

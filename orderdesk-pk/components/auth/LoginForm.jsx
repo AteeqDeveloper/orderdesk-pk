@@ -11,7 +11,10 @@ import { loginUser } from "@/services/authService";
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirectTo") || "/dashboard";
+  const requestedRedirect = searchParams.get("redirectTo") || "/dashboard";
+  const redirectTo = requestedRedirect.startsWith("/") && !requestedRedirect.startsWith("//")
+    ? requestedRedirect
+    : "/dashboard";
 
   const [form, setForm] = useState({ email: "", password: "" });
   const [errors, setErrors] = useState({});
@@ -41,7 +44,7 @@ export default function LoginForm() {
 
     if (error) {
       setFormError(
-        error.message === "Invalid login credentials"
+        error.message === "Invalid email or password"
           ? "Incorrect email or password. Please try again."
           : error.message
       );

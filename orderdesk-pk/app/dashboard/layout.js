@@ -1,22 +1,17 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/serverApi";
 import DashboardShell from "@/components/layout/DashboardShell";
 
 export default async function DashboardLayout({ children }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getServerUser();
   if (!user) {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, business_name")
-    .eq("id", user.id)
-    .single();
+  const profile = {
+    full_name: user.fullName,
+    business_name: user.businessName,
+  };
 
   return (
     <DashboardShell user={user} profile={profile}>

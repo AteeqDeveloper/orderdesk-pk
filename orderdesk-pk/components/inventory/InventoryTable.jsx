@@ -4,14 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ImageOff,
-  Layers,
   PackageSearch,
   SlidersHorizontal,
 } from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
 import EmptyState from "@/components/ui/EmptyState";
 import StockAdjustmentModal from "@/components/inventory/StockAdjustmentModal";
-import ProductVariantsModal from "@/components/inventory/ProductVariantsModal";
 import { formatPKR, formatDate } from "@/lib/utils";
 import { getProductStockStatus } from "@/services/inventoryService";
 
@@ -31,7 +29,6 @@ function ProductThumb({ product }) {
 export default function InventoryTable({ products, hasFilters }) {
   const router = useRouter();
   const [adjustingProduct, setAdjustingProduct] = useState(null);
-  const [variantProduct, setVariantProduct] = useState(null);
   // Track local overrides so updates reflect immediately without a full page reload
   const [stockOverrides, setStockOverrides] = useState({});
 
@@ -94,9 +91,6 @@ export default function InventoryTable({ products, hasFilters }) {
                   product.stock,
                   product.low_stock_threshold
                 );
-                const hasVariants =
-                  (product.product_variants || []).length > 0;
-
                 return (
                   <tr key={product.id} className="hover:bg-ink-50/40">
                     {/* Product */}
@@ -107,17 +101,6 @@ export default function InventoryTable({ products, hasFilters }) {
                           <p className="truncate font-medium text-ink-900 max-w-[180px]">
                             {product.name}
                           </p>
-                          {hasVariants && (
-                            <button
-                              type="button"
-                              onClick={() => setVariantProduct(rawProduct)}
-                              className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-brand-700 hover:text-brand-800"
-                            >
-                              <Layers className="h-3 w-3" />
-                              {product.product_variants.length} variant
-                              {product.product_variants.length !== 1 ? "s" : ""}
-                            </button>
-                          )}
                         </div>
                       </div>
                     </td>
@@ -201,8 +184,6 @@ export default function InventoryTable({ products, hasFilters }) {
               product.stock,
               product.low_stock_threshold
             );
-            const hasVariants = (product.product_variants || []).length > 0;
-
             return (
               <li key={product.id} className="px-4 py-4">
                 <div className="flex items-start gap-3">
@@ -219,16 +200,6 @@ export default function InventoryTable({ products, hasFilters }) {
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <StatusBadge status={stockStatus} type="inventory" />
-                      {hasVariants && (
-                        <button
-                          type="button"
-                          onClick={() => setVariantProduct(rawProduct)}
-                          className="flex items-center gap-1 text-[11px] font-medium text-brand-700"
-                        >
-                          <Layers className="h-3 w-3" />
-                          {product.product_variants.length} variants
-                        </button>
-                      )}
                     </div>
                   </div>
                   <button
@@ -254,12 +225,6 @@ export default function InventoryTable({ products, hasFilters }) {
         onUpdated={handleStockUpdated}
       />
 
-      <ProductVariantsModal
-        product={variantProduct}
-        open={Boolean(variantProduct)}
-        onClose={() => setVariantProduct(null)}
-        onRefresh={() => router.refresh()}
-      />
     </>
   );
 }

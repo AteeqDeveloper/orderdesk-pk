@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/client";
+import { apiRequest } from "@/lib/api";
 
 /**
  * Determine the stock status for a product based on its current stock
@@ -22,128 +22,91 @@ export function getProductStockStatus(stock, threshold = 5) {
   return "in_stock";
 }
 
-/**
- * Read functions accept a Supabase client instance (server or client)
- * and the user id.
- */
-export async function getInventoryProducts(supabase, userId, filters = {}) {
-  const { search = "", category = "", stockStatus = "" } = filters;
-
-  let query = supabase
-    .from("products")
-    .select("*, product_variants(*)")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-
-  if (search.trim()) {
-    const term = search.trim().replace(/[%_]/g, "");
-    query = query.or(`name.ilike.%${term}%,sku.ilike.%${term}%`);
-  }
-
-  if (category) {
-    query = query.eq("category", category);
-  }
-
-  const { data, error } = await query;
-  let products = data || [];
-
-  // Filter by stock status if requested
-  if (stockStatus) {
-    products = products.filter((product) => {
-      const status = getProductStockStatus(product.stock, product.low_stock_threshold);
-      return status === stockStatus;
-    });
-  }
-
-  return { products, error };
-}
-
-export async function getInventoryStats(supabase, userId) {
-  const { data, error } = await supabase
-    .from("products")
-    .select("id, stock, cost_price, price, low_stock_threshold, status")
-    .eq("user_id", userId);
-
-  const products = data || [];
-
-  const totalProducts = products.length;
-  let totalStockUnits = 0;
-  let lowStockCount = 0;
-  let outOfStockCount = 0;
-  let inStockCount = 0;
-  let totalInventoryValue = 0;
-
-  for (const product of products) {
-    const stock = Number(product.stock) || 0;
-    const costPrice = Number(product.cost_price) || 0;
-    const threshold = Number(product.low_stock_threshold ?? 5);
-
-    totalStockUnits += stock;
-    totalInventoryValue += stock * costPrice;
-
-    if (stock === 0) {
-      outOfStockCount += 1;
-    } else if (stock <= threshold) {
-      lowStockCount += 1;
-    } else {
-      inStockCount += 1;
-    }
-  }
-
+function mapProduct(product) {
   return {
-    totalProducts,
-    totalStockUnits,
-    lowStockCount,
-    outOfStockCount,
-    inStockCount,
-    totalInventoryValue,
-    error,
+    ...product,
+    id: String(product._id || product.id),
+    cost_price: product.costPrice ?? product.cost_price ?? 0,
+    image_url: product.imageUrl ?? product.image_url ?? "",
+    low_stock_threshold: product.lowStockThreshold ?? product.low_stock_threshold ?? 5,
+    created_at: product.createdAt ?? product.created_at,
   };
 }
 
-/**
- * Updates product stock level in Supabase.
- * Validates that stock cannot be negative.
- */
-export async function updateProductStock(productId, newStock) {
+export function filterInventoryProducts(products, filters = {}) {
+  let filtered = products;
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().toLowerCase();
+    filtered = filtered.filter((product) =>
+      `${product.name} ${product.sku || ""}`.toLowerCase().includes(term)
+    );
+  }
+  if (filters.category) {
+    filtered = filtered.filter((product) => product.category === filters.category);
+  }
+  if (filters.stockStatus) {
+    filtered = filtered.filter((product) =>
+      getProductStockStatus(product.stock, product.low_stock_threshold) === filters.stockStatus
+    );
+  }
+  return filtered;
+}
+
+export async function getInventoryStats(request) {
+  try {
+    const [{ data: summary }, { data }] = await Promise.all([
+      request("inventory/summary"),
+      request("inventory"),
+    ]);
+    const products = (data || []).map(mapProduct);
+    const stats = {
+      totalProducts: summary.totalProducts,
+      totalStockUnits: summary.totalUnits,
+      lowStockCount: summary.lowStockCount,
+      outOfStockCount: 0,
+      inStockCount: 0,
+      totalInventoryValue: 0,
+      products,
+      categories: Array.from(new Set(products.map((product) => product.category).filter(Boolean))).sort(),
+    };
+    for (const product of products) {
+      const stock = Number(product.stock) || 0;
+      if (stock === 0) stats.outOfStockCount += 1;
+      else if (stock > Number(product.low_stock_threshold ?? 5)) stats.inStockCount += 1;
+      stats.totalInventoryValue += stock * (Number(product.cost_price) || 0);
+    }
+    return { ...stats, error: null };
+  } catch (error) {
+    return {
+      totalProducts: 0,
+      totalStockUnits: 0,
+      lowStockCount: 0,
+      outOfStockCount: 0,
+      inStockCount: 0,
+      totalInventoryValue: 0,
+      products: [],
+      categories: [],
+      error,
+    };
+  }
+}
+
+export async function updateProductStock(productId, newStock, currentStock = 0) {
   const parsedStock = Math.floor(Number(newStock));
 
   if (Number.isNaN(parsedStock) || parsedStock < 0) {
     return { product: null, error: { message: "Stock quantity cannot be negative." } };
   }
-
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("products")
-    .update({
-      stock: parsedStock,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", productId)
-    .select("*, product_variants(*)")
-    .single();
-
-  return { product: data || null, error };
-}
-
-/**
- * Updates variant stock level in Supabase.
- * Validates that stock cannot be negative.
- */
-export async function updateVariantStock(variantId, newStock) {
-  const parsedStock = Math.floor(Number(newStock));
-
-  if (Number.isNaN(parsedStock) || parsedStock < 0) {
-    return { variant: null, error: { message: "Variant stock cannot be negative." } };
+  if (parsedStock === Number(currentStock)) {
+    return { product: { id: productId, stock: parsedStock }, error: null };
   }
-
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("product_variants")
-    .update({ stock: parsedStock })
-    .eq("id", variantId)
-    .select()
-    .single();
-
-  return { variant: data || null, error };
+  try {
+    const response = await apiRequest(`inventory/${productId}/adjust`, {
+      method: "PATCH",
+      body: JSON.stringify({ change: parsedStock - Number(currentStock) }),
+    });
+    return { product: { ...response.data, id: response.data.productId }, error: null };
+  } catch (error) {
+    return { product: null, error };
+  }
 }

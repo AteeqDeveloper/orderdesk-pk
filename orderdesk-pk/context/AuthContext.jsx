@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getCurrentUser } from "@/services/authService";
 
 export const AuthContext = createContext({
   user: null,
@@ -15,45 +15,21 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
     let isMounted = true;
 
-    async function loadUserAndProfile(currentUser) {
-      if (!currentUser) {
-        if (isMounted) {
-          setUser(null);
-          setProfile(null);
-          setLoading(false);
-        }
-        return;
-      }
-
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", currentUser.id)
-        .single();
-
+    getCurrentUser().then((currentUser) => {
       if (isMounted) {
         setUser(currentUser);
-        setProfile(profileData || null);
+        setProfile(currentUser ? {
+          full_name: currentUser.fullName,
+          business_name: currentUser.businessName,
+        } : null);
         setLoading(false);
       }
-    }
-
-    supabase.auth.getUser().then(({ data: { user: currentUser } }) => {
-      loadUserAndProfile(currentUser);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      loadUserAndProfile(session?.user ?? null);
     });
 
     return () => {
       isMounted = false;
-      subscription.unsubscribe();
     };
   }, []);
 

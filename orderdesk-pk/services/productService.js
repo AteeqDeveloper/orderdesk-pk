@@ -1,148 +1,105 @@
-import { createClient } from "@/lib/supabase/client";
+import { apiRequest } from "@/lib/api";
 
-/**
- * Read functions take an already-created Supabase client (server or
- * browser) plus the current user's id — used from Server Components so
- * pages render with data already loaded. RLS scopes rows to the signed-in
- * user; the explicit `user_id` filters are kept for clarity and so search
- * can use plain equality/ilike instead of relying on policy alone.
- */
-export async function getProducts(supabase, userId, filters = {}) {
-  const { search = "", category = "", status = "" } = filters;
-
-  let query = supabase
-    .from("products")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-
-  if (search.trim()) {
-    const term = search.trim().replace(/[%_]/g, "");
-    query = query.or(`name.ilike.%${term}%,sku.ilike.%${term}%`);
-  }
-  if (category) {
-    query = query.eq("category", category);
-  }
-  if (status) {
-    query = query.eq("status", status);
-  }
-
-  const { data, error } = await query;
-  return { products: data || [], error };
+function mapProduct(product) {
+  if (!product) return null;
+  return {
+    ...product,
+    id: String(product._id || product.id),
+    cost_price: product.costPrice ?? product.cost_price ?? 0,
+    image_url: product.imageUrl ?? product.image_url ?? "",
+    low_stock_threshold: product.lowStockThreshold ?? product.low_stock_threshold ?? 5,
+    created_at: product.createdAt ?? product.created_at,
+    updated_at: product.updatedAt ?? product.updated_at,
+  };
 }
 
-export async function getProductCategories(supabase, userId) {
-  const { data, error } = await supabase
-    .from("products")
-    .select("category")
-    .eq("user_id", userId)
-    .not("category", "is", null);
-
-  const categories = Array.from(
-    new Set((data || []).map((p) => p.category).filter(Boolean))
-  ).sort();
-
-  return { categories, error };
+function mapProductInput(values) {
+  return {
+    name: values.name,
+    sku: values.sku || "",
+    description: values.description || "",
+    price: Number(values.price),
+    costPrice: values.cost_price === null ? 0 : Number(values.cost_price || 0),
+    stock: Number(values.stock),
+    category: values.category || "General",
+    imageUrl: values.image_url || "",
+    lowStockThreshold: Number(values.low_stock_threshold ?? 5),
+    status: values.status,
+  };
 }
 
-export async function getProductById(supabase, userId, id) {
-  const { data, error } = await supabase
-    .from("products")
-    .select("*, product_variants(*)")
-    .eq("user_id", userId)
-    .eq("id", id)
-    .single();
-
-  return { product: data || null, error };
+async function fetchProducts(request) {
+  const data = await request("products");
+  return (data.products || []).map(mapProduct);
 }
 
-/**
- * Write functions create their own browser client — they're called
- * directly from Client Components (forms, delete buttons) rather than
- * being handed one, matching the pattern in authService.js.
- */
+export async function getProducts(request, filters = {}) {
+  try {
+    const { search = "", category = "", status = "" } = filters;
+    let products = await fetchProducts(request);
+    const categories = Array.from(new Set(products.map((product) => product.category).filter(Boolean))).sort();
+    if (search.trim()) {
+      const term = search.trim().toLowerCase();
+      products = products.filter((product) =>
+        `${product.name} ${product.sku || ""}`.toLowerCase().includes(term)
+      );
+    }
+    if (category) products = products.filter((product) => product.category === category);
+    if (status) products = products.filter((product) => product.status === status);
+    return { products, categories, error: null };
+  } catch (error) {
+    return { products: [], categories: [], error };
+  }
+}
+
+export async function getProductCategories(request) {
+  try {
+    const products = await fetchProducts(request);
+    const categories = Array.from(new Set(products.map((product) => product.category).filter(Boolean))).sort();
+    return { categories, error: null };
+  } catch (error) {
+    return { categories: [], error };
+  }
+}
+
+export async function getProductById(request, id) {
+  try {
+    const data = await request(`products/${id}`);
+    return { product: mapProduct(data.product), error: null };
+  } catch (error) {
+    return { product: null, error };
+  }
+}
+
 export async function createProduct(userId, values) {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("products")
-    .insert({ user_id: userId, ...values })
-    .select()
-    .single();
-
-  return { product: data || null, error };
+  try {
+    const data = await apiRequest("products", {
+      method: "POST",
+      body: JSON.stringify(mapProductInput(values)),
+    });
+    return { product: mapProduct(data.product), error: null };
+  } catch (error) {
+    return { product: null, error };
+  }
 }
 
 export async function updateProduct(id, values) {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("products")
-    .update(values)
-    .eq("id", id)
-    .select()
-    .single();
-
-  return { product: data || null, error };
+  try {
+    const data = await apiRequest(`products/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(mapProductInput(values)),
+    });
+    return { product: mapProduct(data.product), error: null };
+  } catch (error) {
+    return { product: null, error };
+  }
 }
 
 export async function deleteProduct(id) {
-  const supabase = createClient();
-  const { error } = await supabase.from("products").delete().eq("id", id);
-  return { error };
-}
-
-/**
- * Uploads to a "product-images" storage bucket, namespaced by user id so
- * RLS-style storage policies can scope access the same way the tables do.
- * If the bucket doesn't exist yet in the user's Supabase project, this
- * fails gracefully and the caller falls back to a pasted image URL.
- */
-export async function uploadProductImage(userId, file) {
-  const supabase = createClient();
-  const fileExt = file.name.split(".").pop();
-  const filePath = `${userId}/${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2)}.${fileExt}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from("product-images")
-    .upload(filePath, file, { cacheControl: "3600", upsert: false });
-
-  if (uploadError) {
-    return { url: null, error: uploadError };
+  try {
+    await apiRequest(`products/${id}`, { method: "DELETE" });
+    return { error: null };
+  } catch (error) {
+    return { error };
   }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("product-images").getPublicUrl(filePath);
-
-  return { url: publicUrl, error: null };
-}
-
-export async function addProductVariant(productId, values) {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("product_variants")
-    .insert({ product_id: productId, ...values })
-    .select()
-    .single();
-
-  return { variant: data || null, error };
-}
-
-export async function updateProductVariant(id, values) {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("product_variants")
-    .update(values)
-    .eq("id", id)
-    .select()
-    .single();
-
-  return { variant: data || null, error };
-}
-
-export async function deleteProductVariant(id) {
-  const supabase = createClient();
-  const { error } = await supabase.from("product_variants").delete().eq("id", id);
-  return { error };
 }

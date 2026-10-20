@@ -1,65 +1,49 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 
 const PROTECTED_PREFIXES = ["/dashboard"];
+const TOKEN_COOKIE = "orderdesk_token";
 
 export async function middleware(request) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
-
-  // Refreshing the session must happen before any redirect decision.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const pathname = request.nextUrl.pathname;
+  const token = request.cookies.get(TOKEN_COOKIE)?.value;
   const isProtectedRoute = PROTECTED_PREFIXES.some((prefix) =>
     pathname.startsWith(prefix)
   );
 
-  if (isProtectedRoute && !user) {
+  let isAuthenticated = Boolean(token);
+  let shouldClearToken = false;
+  if (isAuthenticated && (isProtectedRoute || ["/login", "/register", "/forgot-password"].includes(pathname))) {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const response = await fetch(`${apiUrl}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      isAuthenticated = response.ok;
+      shouldClearToken = response.status === 401;
+    } catch {
+      isAuthenticated = false;
+    }
+  }
+
+  if (isProtectedRoute && !isAuthenticated) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirectTo", pathname);
-    return NextResponse.redirect(loginUrl);
+    const response = NextResponse.redirect(loginUrl);
+    if (shouldClearToken) response.cookies.delete(TOKEN_COOKIE);
+    return response;
   }
 
   // Signed-in users don't need to see the auth pages again.
   const isAuthRoute = ["/login", "/register", "/forgot-password"].includes(
     pathname
   );
-  if (isAuthRoute && user) {
+  if (isAuthRoute && isAuthenticated) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
+  const response = NextResponse.next();
+  if (shouldClearToken) response.cookies.delete(TOKEN_COOKIE);
   return response;
 }
 
@@ -68,6 +52,6 @@ export const config = {
     /*
      * Match all paths except static assets and image optimization files.
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

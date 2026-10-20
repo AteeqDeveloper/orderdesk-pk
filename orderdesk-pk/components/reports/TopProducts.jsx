@@ -3,7 +3,7 @@ import { formatPKR } from "@/lib/utils";
 
 /**
  * TopProducts — Server Component.
- * Receives pre-sorted product list from reportService.getTopProducts().
+ * Receives the pre-sorted product list from the report API adapter.
  * sortBy prop is passed from the parent for the UI label only.
  */
 export default function TopProducts({ products = [], sortBy = "unitsSold" }) {

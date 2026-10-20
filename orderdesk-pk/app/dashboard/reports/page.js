@@ -9,15 +9,8 @@ import {
   Package,
   BarChart3,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
-import {
-  getReportStats,
-  getSalesChartData,
-  getOrderStatusReport,
-  getPaymentReport,
-  getTopProducts,
-  getDateRange,
-} from "@/services/reportService";
+import { serverApiRequest } from "@/lib/serverApi";
+import { getDateRange, getReportData } from "@/services/reportApiService";
 import ReportCard from "@/components/reports/ReportCard";
 import SalesChart from "@/components/reports/SalesChart";
 import OrderStatusReport from "@/components/reports/OrderStatusReport";
@@ -33,11 +26,6 @@ export const metadata = {
 };
 
 export default async function ReportsPage({ searchParams }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   // Read date parameters from URL
   const datePreset = searchParams?.datePreset || "30d";
   const customFrom = searchParams?.from || "";
@@ -55,18 +43,12 @@ export default async function ReportsPage({ searchParams }) {
     dateRange = getDateRange(datePreset);
   }
 
-  // Fetch all report data in parallel
-  const [statsResult, chartResult, orderStatusResult, paymentResult, topProductsResult] =
-    await Promise.all([
-      getReportStats(supabase, user.id, dateRange),
-      getSalesChartData(supabase, user.id, datePreset, {
-        from: customFrom,
-        to: customTo,
-      }),
-      getOrderStatusReport(supabase, user.id, dateRange),
-      getPaymentReport(supabase, user.id, dateRange),
-      getTopProducts(supabase, user.id, dateRange, 10),
-    ]);
+  const report = await getReportData(serverApiRequest, dateRange, datePreset);
+  const statsResult = report.stats;
+  const chartResult = report.chart;
+  const orderStatusResult = report.orderStatus;
+  const paymentResult = report.payment;
+  const topProductsResult = { products: report.topProducts };
 
   // Sort top products client-side based on sortBy
   const sortedTopProducts =
@@ -80,10 +62,7 @@ export default async function ReportsPage({ searchParams }) {
       : 0;
 
   const hasError =
-    statsResult.error ||
-    chartResult.error ||
-    orderStatusResult.error ||
-    paymentResult.error;
+    report.error;
 
   const dateLabel = {
     today: "Today",

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, User, MapPin, Receipt, Calendar } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { serverApiRequest } from "@/lib/serverApi";
 import { getOrderById } from "@/services/orderService";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { formatPKR, formatDate } from "@/lib/utils";
@@ -11,12 +11,7 @@ export const metadata = {
 };
 
 export default async function OrderDetailPage({ params }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { order, error } = await getOrderById(supabase, user.id, params.id);
+  const { order, error } = await getOrderById(serverApiRequest, params.id);
 
   if (error || !order) {
     notFound();

@@ -1,21 +1,16 @@
 import { Settings, Store, Mail, User, ShieldCheck } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/serverApi";
 
 export const metadata = {
   title: "Settings — OrderDesk PK",
 };
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  const user = await getServerUser();
+  const profile = {
+    business_name: user?.businessName,
+    full_name: user?.fullName,
+  };
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -58,7 +53,7 @@ export default async function SettingsPage() {
           <div className="rounded-lg bg-ink-50/70 p-3.5">
             <dt className="text-xs font-medium text-ink-400">Account Email</dt>
             <dd className="mt-1 text-sm font-semibold text-ink-900 truncate">
-              {user.email}
+              {user?.email}
             </dd>
           </div>
           <div className="rounded-lg bg-ink-50/70 p-3.5">

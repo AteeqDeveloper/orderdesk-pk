@@ -507,14 +507,10 @@ Includes:
 
 ## Backend
 
-* Supabase
-
-### Supabase Services
-
-* Authentication
-* PostgreSQL Database
-* Storage
-* Row Level Security
+* Express.js REST API
+* MongoDB database
+* Bearer JWT authentication stored by the frontend in an HttpOnly session cookie
+* Product images use externally hosted URLs; file uploads need backend storage support
 
 ---
 

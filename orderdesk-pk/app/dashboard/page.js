@@ -1,11 +1,6 @@
 import { Receipt, Wallet, Users, PackageX } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
-import {
-  getDashboardStats,
-  getRecentOrders,
-  getOrderStatusSummary,
-  getSalesOverview,
-} from "@/services/dashboardService";
+import { serverApiRequest } from "@/lib/serverApi";
+import { getDashboardData } from "@/services/dashboardService";
 import StatCard from "@/components/dashboard/StatCard";
 import SalesOverview from "@/components/dashboard/SalesOverview";
 import OrderStatusSummary from "@/components/dashboard/OrderStatusSummary";
@@ -18,17 +13,8 @@ export const metadata = {
 };
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const [stats, recent, statusSummary, salesOverview] = await Promise.all([
-    getDashboardStats(supabase, user.id),
-    getRecentOrders(supabase, user.id),
-    getOrderStatusSummary(supabase, user.id),
-    getSalesOverview(supabase, user.id),
-  ]);
+  const { stats, recent, statusSummary, salesOverview, error } =
+    await getDashboardData(serverApiRequest);
 
   return (
     <div className="space-y-6">
@@ -38,6 +24,12 @@ export default async function DashboardPage() {
           Here&apos;s how your shop is doing.
         </p>
       </div>
+
+      {error && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+          Dashboard data could not be loaded. Please refresh the page.
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={Receipt} label="Total orders" value={stats.totalOrders} />

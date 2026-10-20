@@ -19,7 +19,6 @@ export default function RegisterForm() {
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [confirmationSent, setConfirmationSent] = useState(false);
 
   function handleChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -31,10 +30,12 @@ export default function RegisterForm() {
     if (!form.businessName.trim())
       nextErrors.businessName = "Business name is required.";
     if (!form.email.trim()) nextErrors.email = "Email is required.";
+    else if (!/^\S+@\S+\.\S+$/.test(form.email.trim()))
+      nextErrors.email = "Enter a valid email address.";
     if (!form.password) {
       nextErrors.password = "Password is required.";
-    } else if (form.password.length < 6) {
-      nextErrors.password = "Password must be at least 6 characters.";
+    } else if (form.password.length < 8) {
+      nextErrors.password = "Password must be at least 8 characters.";
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -46,38 +47,16 @@ export default function RegisterForm() {
     if (!validate()) return;
 
     setLoading(true);
-    const { data, error } = await registerUser(form);
+    const { error } = await registerUser(form);
     setLoading(false);
 
     if (error) {
-      setFormError(
-        error.message === "User already registered"
-          ? "An account with this email already exists."
-          : error.message
-      );
-      return;
-    }
-
-    // If Supabase requires email confirmation, there is no session yet.
-    if (data?.user && !data?.session) {
-      setConfirmationSent(true);
+      setFormError(error.message);
       return;
     }
 
     router.push("/dashboard");
     router.refresh();
-  }
-
-  if (confirmationSent) {
-    return (
-      <div
-        role="status"
-        className="rounded-lg border border-brand-200 bg-brand-50 px-4 py-3.5 text-sm text-brand-800"
-      >
-        We&apos;ve sent a confirmation link to <strong>{form.email}</strong>.
-        Confirm your email, then log in to reach your dashboard.
-      </div>
-    );
   }
 
   return (
@@ -148,7 +127,7 @@ export default function RegisterForm() {
           name="password"
           type="password"
           autoComplete="new-password"
-          placeholder="At least 6 characters"
+          placeholder="At least 8 characters"
           value={form.password}
           onChange={handleChange}
           error={!!errors.password}

@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { Download, Loader2, CheckCircle, AlertCircle } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import { getOrdersForExport, getDateRange } from "@/services/reportService";
+import { getOrdersForExport, getDateRange } from "@/services/reportApiService";
 import { formatDate } from "@/lib/utils";
 
 /**
@@ -21,17 +20,6 @@ export default function ReportExportButton({ datePreset = "30d", customFrom = ""
     setSuccess(false);
 
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setError("You must be signed in to export data.");
-        setExporting(false);
-        return;
-      }
-
       let dateRange;
       if (datePreset === "custom") {
         dateRange = {
@@ -42,11 +30,7 @@ export default function ReportExportButton({ datePreset = "30d", customFrom = ""
         dateRange = getDateRange(datePreset);
       }
 
-      const { orders, error: fetchError } = await getOrdersForExport(
-        supabase,
-        user.id,
-        dateRange
-      );
+      const { orders, error: fetchError } = await getOrdersForExport(dateRange);
 
       if (fetchError) {
         setError("Failed to fetch data for export.");

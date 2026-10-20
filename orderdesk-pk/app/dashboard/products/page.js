@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
-import { getProducts, getProductCategories } from "@/services/productService";
+import { serverApiRequest } from "@/lib/serverApi";
+import { getProducts } from "@/services/productService";
 import ProductFilters from "@/components/products/ProductFilters";
 import ProductsTable from "@/components/products/ProductsTable";
 
@@ -10,20 +10,16 @@ export const metadata = {
 };
 
 export default async function ProductsPage({ searchParams }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const search = searchParams?.search || "";
   const category = searchParams?.category || "";
   const status = searchParams?.status || "";
   const hasFilters = Boolean(search || category || status);
 
-  const [{ products, error }, { categories }] = await Promise.all([
-    getProducts(supabase, user.id, { search, category, status }),
-    getProductCategories(supabase, user.id),
-  ]);
+  const { products, categories = [], error } = await getProducts(serverApiRequest, {
+    search,
+    category,
+    status,
+  });
 
   return (
     <div className="space-y-6">

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { Mail, Phone, MapPin, Receipt, Wallet } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { getServerUser, serverApiRequest } from "@/lib/serverApi";
 import { getCustomerById, getCustomerOrders } from "@/services/customerService";
 import StatCard from "@/components/dashboard/StatCard";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -14,14 +14,10 @@ export const metadata = {
 };
 
 export default async function CustomerDetailPage({ params }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const [{ customer, error }, { orders }] = await Promise.all([
-    getCustomerById(supabase, user.id, params.id),
-    getCustomerOrders(supabase, user.id, params.id),
+  const user = await getServerUser();
+  const [{ customer, error }, { orders, totalOrders, totalSpent }] = await Promise.all([
+    getCustomerById(serverApiRequest, params.id),
+    getCustomerOrders(serverApiRequest, params.id),
   ]);
 
   if (error || !customer) {
@@ -47,8 +43,8 @@ export default async function CustomerDetailPage({ params }) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <StatCard icon={Receipt} label="Total orders" value={customer.total_orders ?? 0} />
-        <StatCard icon={Wallet} label="Total spent" value={formatPKR(customer.total_spent)} />
+        <StatCard icon={Receipt} label="Total orders" value={totalOrders} />
+        <StatCard icon={Wallet} label="Total spent" value={formatPKR(totalSpent)} />
       </div>
 
       <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card sm:p-6">

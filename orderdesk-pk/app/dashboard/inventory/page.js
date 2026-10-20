@@ -1,8 +1,7 @@
 import { Suspense } from "react";
 import { Boxes } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
-import { getInventoryStats, getInventoryProducts } from "@/services/inventoryService";
-import { getProductCategories } from "@/services/productService";
+import { serverApiRequest } from "@/lib/serverApi";
+import { filterInventoryProducts, getInventoryStats } from "@/services/inventoryService";
 import InventoryDashboard from "@/components/inventory/InventoryDashboard";
 import InventoryFilters from "@/components/inventory/InventoryFilters";
 import InventoryTable from "@/components/inventory/InventoryTable";
@@ -13,22 +12,16 @@ export const metadata = {
 };
 
 export default async function InventoryPage({ searchParams }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const search = searchParams?.search || "";
   const category = searchParams?.category || "";
   const stockStatus = searchParams?.stockStatus || "";
   const hasFilters = Boolean(search || category || stockStatus);
 
-  const [{ stats, error: statsError }, { products, error: productsError }, { categories }] =
-    await Promise.all([
-      getInventoryStats(supabase, user.id).then((s) => ({ stats: s, error: s.error })),
-      getInventoryProducts(supabase, user.id, { search, category, stockStatus }),
-      getProductCategories(supabase, user.id),
-    ]);
+  const stats = await getInventoryStats(serverApiRequest);
+  const statsError = stats.error;
+  const productsError = stats.error;
+  const products = filterInventoryProducts(stats.products, { search, category, stockStatus });
+  const categories = stats.categories;
 
   return (
     <div className="space-y-6">

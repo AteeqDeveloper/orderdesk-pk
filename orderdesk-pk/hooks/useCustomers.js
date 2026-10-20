@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 /**
  * Keeps the customers list's search box in sync with the URL query string,
- * so the server component page re-runs its Supabase query. Debounced so
+ * so the server component page reloads its backend API data. Debounced so
  * typing doesn't trigger a navigation on every keystroke.
  */
 export function useCustomerFilters() {

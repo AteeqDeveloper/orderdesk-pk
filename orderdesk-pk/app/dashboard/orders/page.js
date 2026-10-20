@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Receipt, Search } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { serverApiRequest } from "@/lib/serverApi";
 import { getOrders } from "@/services/orderService";
 import StatusBadge from "@/components/ui/StatusBadge";
 import EmptyState from "@/components/ui/EmptyState";
@@ -12,16 +12,11 @@ export const metadata = {
 };
 
 export default async function OrdersPage({ searchParams }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const status = searchParams?.status || "";
   const search = searchParams?.search || "";
   const hasFilters = Boolean(status || search);
 
-  const { orders, error } = await getOrders(supabase, user.id, {
+  const { orders, error } = await getOrders(serverApiRequest, {
     status,
     search,
   });

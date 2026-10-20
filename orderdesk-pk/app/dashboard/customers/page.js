@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { getServerUser, serverApiRequest } from "@/lib/serverApi";
 import { getCustomers } from "@/services/customerService";
 import CustomerFilters from "@/components/customers/CustomerFilters";
 import CustomersTable from "@/components/customers/CustomersTable";
@@ -9,15 +9,12 @@ export const metadata = {
 };
 
 export default async function CustomersPage({ searchParams }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
 
   const search = searchParams?.search || "";
   const hasFilters = Boolean(search);
 
-  const { customers, error } = await getCustomers(supabase, user.id, { search });
+  const { customers, error } = await getCustomers(serverApiRequest, { search });
 
   return (
     <div className="space-y-6">
