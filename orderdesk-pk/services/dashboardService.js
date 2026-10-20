@@ -25,7 +25,7 @@ export async function getDashboardData(request, days = 7) {
       salesDays.push({ dateKey: date.toDateString(), date, total: 0 });
     }
     orders.forEach((order) => {
-      if (order.order_status === "cancelled") return;
+      if (order.order_status !== "delivered") return;
       const day = salesDays.find((bucket) => bucket.dateKey === new Date(order.created_at).toDateString());
       if (day) day.total += Number(order.total_amount) || 0;
     });

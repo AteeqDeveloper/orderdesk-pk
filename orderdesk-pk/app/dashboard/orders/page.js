@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Receipt, Search } from "lucide-react";
 import { serverApiRequest } from "@/lib/serverApi";
 import { getOrders } from "@/services/orderService";
+import CreateOrderButton from "@/components/orders/CreateOrderButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import EmptyState from "@/components/ui/EmptyState";
 import { formatPKR, formatDate } from "@/lib/utils";
@@ -30,6 +31,7 @@ export default async function OrdersPage({ searchParams }) {
             Track customer orders from placement through delivery.
           </p>
         </div>
+        <CreateOrderButton />
       </div>
 
       {/* Filter Tabs */}

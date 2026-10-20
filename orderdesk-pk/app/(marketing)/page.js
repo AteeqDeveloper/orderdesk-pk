@@ -58,7 +58,7 @@ export default function HomePage() {
           <FeatureCard
             icon={Package}
             title="Stock that stays accurate"
-            description="Low-stock alerts and variant-level tracking so you never oversell."
+            description="Low-stock alerts help you spot products that need restocking."
           />
           <FeatureCard
             icon={Users}

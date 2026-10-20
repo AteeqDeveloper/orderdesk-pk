@@ -35,7 +35,7 @@ export default async function DashboardPage() {
         <StatCard icon={Receipt} label="Total orders" value={stats.totalOrders} />
         <StatCard
           icon={Wallet}
-          label="Total sales"
+          label="Delivered sales"
           value={formatPKR(stats.totalSales)}
         />
         <StatCard icon={Users} label="Total customers" value={stats.totalCustomers} />

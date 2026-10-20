@@ -21,9 +21,9 @@ export default function SalesChart({ buckets = [], preset = "7d" }) {
     <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-base text-ink-900">Sales Overview</h2>
+          <h2 className="font-display text-base text-ink-900">Delivered Sales</h2>
           <p className="mt-0.5 text-sm text-ink-500">
-            Revenue from non-cancelled/returned orders
+            Revenue from delivered orders only
           </p>
         </div>
         <div className="text-right">

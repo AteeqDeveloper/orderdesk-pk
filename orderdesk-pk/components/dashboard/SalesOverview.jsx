@@ -7,7 +7,7 @@ export default function SalesOverview({ days = [] }) {
 
   return (
     <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card">
-      <h2 className="font-display text-base text-ink-900">Sales overview</h2>
+      <h2 className="font-display text-base text-ink-900">Delivered sales</h2>
       <p className="mt-0.5 text-sm text-ink-500">Last 7 days</p>
 
       <div className="mt-6 flex items-end gap-3 sm:gap-4" style={{ height: 140 }}>

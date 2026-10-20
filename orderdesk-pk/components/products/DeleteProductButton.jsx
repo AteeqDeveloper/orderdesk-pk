@@ -46,7 +46,7 @@ export default function DeleteProductButton({ productId, productName, redirectTo
         title="Delete this product?"
         description={
           error ||
-          `"${productName}" and its variants will be permanently removed. This can't be undone.`
+          `"${productName}" will be permanently removed. This can't be undone.`
         }
         confirmLabel="Delete product"
         loading={loading}

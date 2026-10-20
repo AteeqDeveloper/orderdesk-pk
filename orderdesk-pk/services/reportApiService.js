@@ -2,8 +2,6 @@ import { ORDER_STATUSES, PAYMENT_STATUSES, PAYMENT_METHODS } from "@/lib/constan
 import { mapOrder } from "@/services/orderService";
 import { apiRequest } from "@/lib/api";
 
-const CLOSED_STATUSES = ["cancelled", "returned"];
-
 export function getDateRange(preset) {
   const now = new Date();
   const end = new Date(now);
@@ -62,8 +60,8 @@ export async function getReportData(request, dateRange, preset = "30d") {
     ]);
     const allOrders = (ordersResponse.orders || []).map(mapOrder);
     const orders = allOrders.filter((order) => withinRange(order, dateRange));
-    const activeOrders = orders.filter((order) => !CLOSED_STATUSES.includes(order.order_status));
-    const totalSales = activeOrders.reduce((total, order) => total + Number(order.total_amount || 0), 0);
+    const deliveredOrders = orders.filter((order) => order.order_status === "delivered");
+    const totalSales = deliveredOrders.reduce((total, order) => total + Number(order.total_amount || 0), 0);
     const counts = Object.fromEntries(ORDER_STATUSES.map((status) => [status, 0]));
     const statusCounts = Object.fromEntries(PAYMENT_STATUSES.map((status) => [status, 0]));
     const methodCounts = Object.fromEntries(PAYMENT_METHODS.map(({ value, label }) => [value, { label, count: 0, total: 0 }]));
@@ -79,13 +77,13 @@ export async function getReportData(request, dateRange, preset = "30d") {
     }
 
     const buckets = buildBuckets(dateRange.from, dateRange.to, preset);
-    for (const order of activeOrders) {
+    for (const order of deliveredOrders) {
       const bucket = buckets.find((item) => item.dateKey === new Date(order.created_at).toDateString());
       if (bucket) bucket.total += Number(order.total_amount || 0);
     }
 
     const topMap = new Map();
-    for (const order of activeOrders) {
+    for (const order of deliveredOrders) {
       for (const item of order.items || []) {
         const productId = String(item.productId || item.product_id || item.name);
         const current = topMap.get(productId) || {

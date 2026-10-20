@@ -56,9 +56,9 @@ export default async function ReportsPage({ searchParams }) {
       ? [...(topProductsResult.products || [])].sort((a, b) => b.revenue - a.revenue)
       : topProductsResult.products || [];
 
-  const avgOrderValue =
-    statsResult.totalOrders > 0
-      ? statsResult.totalSales / statsResult.totalOrders
+  const avgDeliveredOrderValue =
+    statsResult.deliveredOrders > 0
+      ? statsResult.totalSales / statsResult.deliveredOrders
       : 0;
 
   const hasError =
@@ -81,7 +81,7 @@ export default async function ReportsPage({ searchParams }) {
           <h1 className="font-display text-xl text-ink-900">Reports & Analytics</h1>
           <p className="mt-1 text-sm text-ink-500">
             Business insights for <span className="font-medium text-ink-700">{dateLabel}</span>.
-            Revenue excludes cancelled &amp; returned orders.
+            Sales include delivered orders only; pending and other undelivered orders are excluded.
           </p>
         </div>
 
@@ -114,9 +114,9 @@ export default async function ReportsPage({ searchParams }) {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <ReportCard
           icon={TrendingUp}
-          label="Total Sales"
+          label="Delivered Sales"
           value={formatPKR(statsResult.totalSales)}
-          subtext="Excl. cancelled & returned"
+          subtext="Orders marked delivered"
           tone="success"
         />
         <ReportCard
@@ -127,8 +127,9 @@ export default async function ReportsPage({ searchParams }) {
         />
         <ReportCard
           icon={BarChart3}
-          label="Avg Order Value"
-          value={formatPKR(avgOrderValue)}
+          label="Avg. Delivered Order"
+          value={formatPKR(avgDeliveredOrderValue)}
+          subtext="Delivered sales / delivered orders"
           tone="info"
         />
         <ReportCard

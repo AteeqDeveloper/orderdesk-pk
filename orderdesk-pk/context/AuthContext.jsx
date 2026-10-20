@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { getCurrentUser } from "@/services/authService";
 
 export const AuthContext = createContext({
@@ -10,6 +11,7 @@ export const AuthContext = createContext({
 });
 
 export function AuthProvider({ children }) {
+  const pathname = usePathname();
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +33,7 @@ export function AuthProvider({ children }) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [pathname]);
 
   return (
     <AuthContext.Provider value={{ user, profile, loading }}>
