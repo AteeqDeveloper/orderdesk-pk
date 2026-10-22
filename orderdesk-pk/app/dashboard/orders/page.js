@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Receipt, Search } from "lucide-react";
+import { Receipt } from "lucide-react";
 import { serverApiRequest } from "@/lib/serverApi";
 import { getOrders } from "@/services/orderService";
 import CreateOrderButton from "@/components/orders/CreateOrderButton";
 import StatusBadge from "@/components/ui/StatusBadge";
+import ManageOrderButton from "@/components/orders/ManageOrderButton";
 import EmptyState from "@/components/ui/EmptyState";
 import { formatPKR, formatDate } from "@/lib/utils";
 import { ORDER_STATUSES } from "@/lib/constants";
@@ -90,13 +91,19 @@ export default async function OrdersPage({ searchParams }) {
                 <th className="px-5 py-3 font-medium">Order Status</th>
                 <th className="px-5 py-3 font-medium">Payment</th>
                 <th className="px-5 py-3 font-medium">Date</th>
+                <th className="px-5 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
               {orders.map((order) => (
                 <tr key={order.id} className="hover:bg-ink-50/40">
                   <td className="px-5 py-3 font-medium text-ink-900">
-                    {order.order_number}
+                    <Link
+                      href={`/dashboard/orders/${order.id}`}
+                      className="hover:text-brand-700"
+                    >
+                      {order.order_number}
+                    </Link>
                   </td>
                   <td className="px-5 py-3 text-ink-600">
                     {order.customers?.name || "—"}
@@ -116,6 +123,9 @@ export default async function OrdersPage({ searchParams }) {
                   <td className="px-5 py-3 text-ink-500">
                     {formatDate(order.created_at)}
                   </td>
+                  <td className="px-5 py-3">
+                    <ManageOrderButton order={order} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -126,7 +136,12 @@ export default async function OrdersPage({ searchParams }) {
             {orders.map((order) => (
               <li key={order.id} className="p-4 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-ink-900">{order.order_number}</span>
+                  <Link
+                    href={`/dashboard/orders/${order.id}`}
+                    className="font-medium text-ink-900 hover:text-brand-700"
+                  >
+                    {order.order_number}
+                  </Link>
                   <span className="font-semibold text-ink-900">
                     {formatPKR(order.total_amount)}
                   </span>
@@ -138,6 +153,9 @@ export default async function OrdersPage({ searchParams }) {
                 <div className="flex items-center gap-2 pt-1">
                   <StatusBadge status={order.order_status} type="order" />
                   <StatusBadge status={order.payment_status} type="payment" />
+                </div>
+                <div className="pt-2">
+                  <ManageOrderButton order={order} />
                 </div>
               </li>
             ))}

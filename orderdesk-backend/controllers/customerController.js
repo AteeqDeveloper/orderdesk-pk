@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 import Customer from "../models/Customer.js";
+import Order from "../models/Order.js";
+import { getCustomerStatsPipeline } from "../utils/customerStats.js";
 
 const allowedFields = [
   "name",
@@ -69,14 +71,27 @@ export const createCustomer = async (req, res) => {
 // GET ALL CUSTOMERS
 export const getCustomers = async (req, res) => {
   try {
-    const customers = await Customer.find({
-      userId: req.user._id,
-    }).sort({ createdAt: -1 });
+    const userId = new mongoose.Types.ObjectId(req.user._id.toString());
+    const [customers, orderStats] = await Promise.all([
+      Customer.find({ userId }).sort({ createdAt: -1 }),
+      Order.aggregate(getCustomerStatsPipeline(userId)),
+    ]);
+    const statsByCustomerId = new Map(
+      orderStats.map((stats) => [stats._id.toString(), stats])
+    );
+    const customersWithStats = customers.map((customer) => {
+      const stats = statsByCustomerId.get(customer._id.toString());
+      return {
+        ...customer.toObject(),
+        totalOrders: stats?.totalOrders ?? 0,
+        totalSpent: stats?.totalSpent ?? 0,
+      };
+    });
 
     return res.status(200).json({
       success: true,
-      count: customers.length,
-      customers,
+      count: customersWithStats.length,
+      customers: customersWithStats,
     });
   } catch (error) {
     console.error("Get customers error:", error.message);
@@ -110,9 +125,18 @@ export const getCustomerById = async (req, res) => {
       });
     }
 
+    const userId = new mongoose.Types.ObjectId(req.user._id.toString());
+    const [stats] = await Order.aggregate(
+      getCustomerStatsPipeline(userId, customer._id)
+    );
+
     return res.status(200).json({
       success: true,
-      customer,
+      customer: {
+        ...customer.toObject(),
+        totalOrders: stats?.totalOrders ?? 0,
+        totalSpent: stats?.totalSpent ?? 0,
+      },
     });
   } catch (error) {
     console.error("Get customer error:", error.message);

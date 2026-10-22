@@ -4,6 +4,7 @@ import { ArrowLeft, User, MapPin, Receipt, Calendar } from "lucide-react";
 import { serverApiRequest } from "@/lib/serverApi";
 import { getOrderById } from "@/services/orderService";
 import StatusBadge from "@/components/ui/StatusBadge";
+import OrderStatusControls from "@/components/orders/OrderStatusControls";
 import { formatPKR, formatDate } from "@/lib/utils";
 
 export const metadata = {
@@ -55,6 +56,8 @@ export default async function OrderDetailPage({ params }) {
           </p>
         </div>
       </div>
+
+      <OrderStatusControls order={order} />
 
       {/* Customer Info */}
       <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card sm:p-6">

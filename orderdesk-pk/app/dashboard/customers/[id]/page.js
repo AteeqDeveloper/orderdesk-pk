@@ -15,7 +15,7 @@ export const metadata = {
 
 export default async function CustomerDetailPage({ params }) {
   const user = await getServerUser();
-  const [{ customer, error }, { orders, totalOrders, totalSpent }] = await Promise.all([
+  const [{ customer, error }, { orders, totalOrders }] = await Promise.all([
     getCustomerById(serverApiRequest, params.id),
     getCustomerOrders(serverApiRequest, params.id),
   ]);
@@ -44,7 +44,7 @@ export default async function CustomerDetailPage({ params }) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <StatCard icon={Receipt} label="Total orders" value={totalOrders} />
-        <StatCard icon={Wallet} label="Total spent" value={formatPKR(totalSpent)} />
+        <StatCard icon={Wallet} label="Total spent" value={formatPKR(customer.total_spent)} />
       </div>
 
       <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card sm:p-6">

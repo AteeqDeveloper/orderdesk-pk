@@ -6,6 +6,8 @@ function mapCustomer(customer) {
     ...customer,
     id: String(customer._id || customer.id),
     created_at: customer.createdAt ?? customer.created_at,
+    total_orders: Number(customer.totalOrders ?? customer.total_orders ?? 0),
+    total_spent: Number(customer.totalSpent ?? customer.total_spent ?? 0),
   };
 }
 
@@ -62,16 +64,18 @@ export async function getCustomerOrders(request, customerId, limit = 10) {
   try {
     const data = await request("orders");
     const customerOrders = (data.orders || [])
-      .filter((order) => String(order.customerId) === String(customerId))
+      .filter((order) => {
+        const relatedCustomerId = order.customerId?._id ?? order.customerId;
+        return String(relatedCustomerId) === String(customerId);
+      })
       .map(mapOrder);
     return {
       orders: customerOrders.slice(0, limit),
       totalOrders: customerOrders.length,
-      totalSpent: customerOrders.reduce((total, order) => total + Number(order.total_amount || 0), 0),
       error: null,
     };
   } catch (error) {
-    return { orders: [], totalOrders: 0, totalSpent: 0, error };
+    return { orders: [], totalOrders: 0, error };
   }
 }
 

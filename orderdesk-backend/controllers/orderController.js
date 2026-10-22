@@ -2,6 +2,12 @@ import mongoose from "mongoose";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import Customer from "../models/Customer.js";
+import {
+  getOrderStatusTransitionError,
+  getPaymentStatusUpdateError,
+  ORDER_STATUS_TRANSITIONS,
+  PAYMENT_STATUSES,
+} from "../utils/orderStatusRules.js";
 
 const validId = (id) => mongoose.isValidObjectId(id);
 
@@ -293,36 +299,64 @@ export const getOrderById = async (req, res) => {
 
 // UPDATE ORDER / PAYMENT STATUS
 export const updateOrder = async (req, res) => {
+  let session;
+
   try {
-    const { orderStatus, paymentStatus } = req.body;
-
-    const allowedOrderStatuses = [
-      "pending",
-      "confirmed",
-      "shipped",
-      "delivered",
-      "cancelled",
-    ];
-
-    const allowedPaymentStatuses = [
-      "unpaid",
-      "paid",
-      "refunded",
-    ];
-
-    if (
-      orderStatus === undefined &&
-      paymentStatus === undefined
-    ) {
+    if (!validId(req.params.id)) {
       return res.status(400).json({
         success: false,
-        message: "Provide an order status or payment status",
+        message: "Invalid order ID",
       });
     }
 
     if (
+      !req.body ||
+      typeof req.body !== "object" ||
+      Array.isArray(req.body)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Provide a valid status update",
+      });
+    }
+
+    const allowedFields = new Set([
+      "orderStatus",
+      "paymentStatus",
+      "manualPaymentConfirmed",
+    ]);
+    if (Object.keys(req.body).some((field) => !allowedFields.has(field))) {
+      return res.status(400).json({
+        success: false,
+        message: "Only order and payment status fields can be updated",
+      });
+    }
+
+    const hasOrderStatus = Object.hasOwn(req.body, "orderStatus");
+    const hasPaymentStatus = Object.hasOwn(req.body, "paymentStatus");
+    if (hasOrderStatus === hasPaymentStatus) {
+      return res.status(400).json({
+        success: false,
+        message: "Provide exactly one order status or payment status",
+      });
+    }
+
+    if (
+      Object.hasOwn(req.body, "manualPaymentConfirmed") &&
+      (!hasPaymentStatus || req.body.paymentStatus !== "paid")
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Manual payment confirmation is only valid when marking an order paid",
+      });
+    }
+
+    const orderStatus = hasOrderStatus ? req.body.orderStatus : undefined;
+    const paymentStatus = hasPaymentStatus ? req.body.paymentStatus : undefined;
+
+    if (
       orderStatus !== undefined &&
-      !allowedOrderStatuses.includes(orderStatus)
+      !Object.hasOwn(ORDER_STATUS_TRANSITIONS, orderStatus)
     ) {
       return res.status(400).json({
         success: false,
@@ -332,7 +366,7 @@ export const updateOrder = async (req, res) => {
 
     if (
       paymentStatus !== undefined &&
-      !allowedPaymentStatuses.includes(paymentStatus)
+      !PAYMENT_STATUSES.includes(paymentStatus)
     ) {
       return res.status(400).json({
         success: false,
@@ -340,69 +374,128 @@ export const updateOrder = async (req, res) => {
       });
     }
 
-    if (
-      orderStatus === "cancelled" &&
-      paymentStatus !== undefined &&
-      paymentStatus !== "unpaid"
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Handle refunds separately before recording a refund",
-      });
-    }
-
-    const changes = {};
-
-    if (orderStatus !== undefined) {
-      changes.orderStatus = orderStatus;
-    }
-
-    if (paymentStatus !== undefined) {
-      changes.paymentStatus = paymentStatus;
-    }
-
-    const filter = {
+    const orderFilter = {
       _id: req.params.id,
       userId: req.user._id,
     };
 
     if (orderStatus === "cancelled") {
-      filter.orderStatus = {
-        $nin: ["cancelled", "delivered"],
-      };
-    } else {
-      filter.orderStatus = { $ne: "cancelled" };
-    }
+      let updateResult;
+      session = await mongoose.startSession();
+      await session.withTransaction(async () => {
+        const currentOrder = await Order.findOne(orderFilter).session(session);
+        if (!currentOrder) {
+          updateResult = {
+            status: 404,
+            message: "Order not found",
+          };
+          return;
+        }
 
-    const order = await Order.findOneAndUpdate(
-      filter,
-      { $set: changes },
-      {
-        new: true,
-        runValidators: true,
+        const transitionError = getOrderStatusTransitionError(
+          currentOrder.orderStatus,
+          orderStatus,
+          currentOrder.paymentStatus
+        );
+        if (transitionError) {
+          updateResult = { status: 409, message: transitionError };
+          return;
+        }
+
+        const order = await Order.findOneAndUpdate(
+          {
+            ...orderFilter,
+            orderStatus: currentOrder.orderStatus,
+            paymentStatus: currentOrder.paymentStatus,
+          },
+          { $set: { orderStatus } },
+          { new: true, runValidators: true, session }
+        );
+
+        if (!order) {
+          updateResult = {
+            status: 409,
+            message: "The order changed before it could be cancelled. Refresh and try again.",
+          };
+          return;
+        }
+
+        for (const item of order.items) {
+          const stockUpdate = await Product.updateOne(
+            {
+              _id: item.productId,
+              userId: req.user._id,
+            },
+            { $inc: { stock: item.quantity } },
+            { session }
+          );
+
+          if (stockUpdate.matchedCount !== 1) {
+            throw new Error(`Could not restore stock for product ${item.productId}`);
+          }
+        }
+
+        updateResult = { status: 200, order };
+      });
+
+      if (updateResult.status !== 200) {
+        return res.status(updateResult.status).json({
+          success: false,
+          message: updateResult.message,
+        });
       }
-    );
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found, already cancelled, or cannot be cancelled",
+      return res.status(200).json({
+        success: true,
+        message: "Order cancelled and stock restored successfully",
+        order: updateResult.order,
       });
     }
 
-    // Restore stock once when the order is cancelled
-    if (orderStatus === "cancelled") {
-      for (const item of order.items) {
-        await Product.updateOne(
-          {
-            _id: item.productId,
-            userId: req.user._id,
-          },
-          {
-            $inc: { stock: item.quantity },
-          }
+    const currentOrder = await Order.findOne(orderFilter);
+    if (!currentOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    const updateError = hasOrderStatus
+      ? getOrderStatusTransitionError(
+          currentOrder.orderStatus,
+          orderStatus,
+          currentOrder.paymentStatus
+        )
+      : getPaymentStatusUpdateError(
+          currentOrder,
+          paymentStatus,
+          req.body.manualPaymentConfirmed
         );
-      }
+
+    if (updateError) {
+      return res.status(409).json({
+        success: false,
+        message: updateError,
+      });
+    }
+
+    const filter = {
+      ...orderFilter,
+      ...(hasOrderStatus
+        ? { orderStatus: currentOrder.orderStatus }
+        : { paymentStatus: currentOrder.paymentStatus }),
+    };
+    const order = await Order.findOneAndUpdate(
+      filter,
+      { $set: hasOrderStatus ? { orderStatus } : { paymentStatus } },
+      { new: true, runValidators: true }
+    );
+
+    if (!order) {
+      return res.status(409).json({
+        success: false,
+        message: "The order changed before it could be updated. Refresh and try again.",
+      });
     }
 
     return res.status(200).json({
@@ -415,7 +508,14 @@ export const updateOrder = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Could not update order",
+      message:
+        req.body?.orderStatus === "cancelled"
+          ? "Could not cancel the order because stock could not be restored safely"
+          : "Could not update order",
     });
+  } finally {
+    if (session) {
+      await session.endSession();
+    }
   }
 };

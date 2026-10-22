@@ -77,11 +77,18 @@ export async function updateOrderStatus(id, orderStatus) {
   }
 }
 
-export async function updatePaymentStatus(id, paymentStatus) {
+export async function updatePaymentStatus(
+  id,
+  paymentStatus,
+  manualPaymentConfirmed = false
+) {
   try {
     const data = await apiRequest(`orders/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ paymentStatus }),
+      body: JSON.stringify({
+        paymentStatus,
+        ...(manualPaymentConfirmed ? { manualPaymentConfirmed: true } : {}),
+      }),
     });
     return { order: mapOrder(data.order), error: null };
   } catch (error) {

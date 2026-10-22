@@ -6,6 +6,14 @@ export const ORDER_STATUSES = [
   "cancelled",
 ];
 
+export const ORDER_STATUS_TRANSITIONS = {
+  pending: ["confirmed", "cancelled"],
+  confirmed: ["shipped", "cancelled"],
+  shipped: ["delivered", "cancelled"],
+  delivered: [],
+  cancelled: [],
+};
+
 export const PAYMENT_STATUSES = ["unpaid", "paid", "refunded"];
 
 export const PAYMENT_METHODS = [

@@ -278,7 +278,6 @@ Orders can have the following statuses:
 
 * Pending
 * Confirmed
-* Processing
 * Shipped
 * Delivered
 * Cancelled
@@ -289,7 +288,7 @@ Orders can have the following statuses:
 
 * Unpaid
 * Paid
-* Partial Payment
+* Refunded
 
 ---
 
@@ -318,10 +317,6 @@ A typical order workflow will be:
 
 ↓
 
-**Processing**
-
-↓
-
 **Shipped**
 
 ↓
@@ -331,6 +326,19 @@ A typical order workflow will be:
 If the customer cancels the order:
 
 **Cancelled**
+
+Order status changes follow the sequence Pending → Confirmed → Shipped → Delivered.
+An unpaid order may be cancelled before delivery; cancellation restores its reserved
+stock exactly once. Paid or delivered orders cannot be cancelled through this workflow.
+
+Customer order counts include every order linked by its MongoDB customer ID.
+Customer total spent, matching dashboard sales, is the sum of `totalAmount` for
+delivered orders only. Customers with no orders have zero orders and zero total spent.
+
+Paid status is a manual record for COD collection or a bank transfer the seller has
+personally verified. JazzCash and Easypaisa payments require trusted provider
+verification, which is not currently integrated. Refunds cannot be recorded until a
+verified refund workflow is available.
 
 ---
 

@@ -80,7 +80,7 @@ export default function CustomersTable({ customers, hasFilters }) {
                 <span>&middot;</span>
                 <span>{customer.total_orders ?? 0} orders</span>
                 <span>&middot;</span>
-                <span>{formatPKR(customer.total_spent)}</span>
+                <span>{formatPKR(customer.total_spent ?? 0 )}</span>
               </div>
             </div>
             <DeleteCustomerButton

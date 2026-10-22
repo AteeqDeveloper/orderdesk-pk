@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 
 const TOKEN_COOKIE = "orderdesk_token";
 const TOKEN_MAX_AGE = 60 * 60 * 24;
@@ -41,6 +42,18 @@ async function proxyRequest(request, context) {
       cache: "no-store",
     });
     const payload = await upstream.text();
+    if (
+      upstream.ok &&
+      ((request.method === "POST" && endpoint === "orders") ||
+        (request.method === "PATCH" && /^orders\/[^/]+$/.test(endpoint)))
+    ) {
+      revalidatePath("/dashboard");
+      revalidatePath("/dashboard/orders");
+      revalidatePath("/dashboard/orders/[id]", "page");
+      revalidatePath("/dashboard/customers");
+      revalidatePath("/dashboard/customers/[id]", "page");
+    }
+
     const responseHeaders = new Headers();
     const upstreamContentType = upstream.headers.get("content-type");
     if (upstreamContentType) {
