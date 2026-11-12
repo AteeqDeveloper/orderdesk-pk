@@ -8,7 +8,7 @@ export const metadata = {
   title: "Edit product — OrderDesk PK",
 };
 
-export default async function EditProductPage({ params }) {
+export default async function EditProductPage({ params, searchParams }) {
   const user = await getServerUser();
   const [{ product, error }, { categories }] = await Promise.all([
     getProductById(serverApiRequest, params.id),
@@ -27,7 +27,7 @@ export default async function EditProductPage({ params }) {
         <div>
           <h1 className="font-display text-xl text-ink-900">{product.name}</h1>
           <p className="mt-1 text-sm text-ink-500">
-            Update product details and stock. Use an image URL for the product image.
+            Update product details, stock, and product image.
           </p>
         </div>
         <DeleteProductButton
@@ -37,7 +37,14 @@ export default async function EditProductPage({ params }) {
         />
       </div>
 
-      <ProductForm userId={user.id} product={productFields} categories={categories} />
+      <ProductForm
+        userId={user.id}
+        product={productFields}
+        categories={categories}
+        initialSuccessMessage={
+          searchParams?.created === "1" ? "Product created successfully." : ""
+        }
+      />
     </div>
   );
 }

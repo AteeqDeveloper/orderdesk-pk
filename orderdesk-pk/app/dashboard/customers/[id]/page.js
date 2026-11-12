@@ -32,7 +32,7 @@ export default async function CustomerDetailPage({ params }) {
           <p className="mt-1 text-sm text-ink-500">Customer details and order history.</p>
         </div>
         <div className="flex items-center gap-2.5">
-          <EditCustomerButton userId={user.id} customer={customer} />
+          <EditCustomerButton userId={user?.id} customer={customer} />
           <DeleteCustomerButton
             customerId={customer.id}
             customerName={customer.name}

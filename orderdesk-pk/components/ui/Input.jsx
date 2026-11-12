@@ -1,8 +1,10 @@
+import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 
-export default function Input({ className, error, ...props }) {
+const Input = forwardRef(function Input({ className, error, ...props }, ref) {
   return (
     <input
+      ref={ref}
       className={cn(
         "w-full rounded-lg border bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400",
         "focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600",
@@ -12,4 +14,6 @@ export default function Input({ className, error, ...props }) {
       {...props}
     />
   );
-}
+});
+
+export default Input;

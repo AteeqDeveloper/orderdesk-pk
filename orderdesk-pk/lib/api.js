@@ -7,10 +7,13 @@ export class ApiError extends Error {
 }
 
 export async function apiRequest(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const response = await fetch(`/api/${path.replace(/^\/+/, "")}`, {
     ...options,
     headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.body && !isFormData
+        ? { "Content-Type": "application/json" }
+        : {}),
       ...options.headers,
     },
     cache: "no-store",

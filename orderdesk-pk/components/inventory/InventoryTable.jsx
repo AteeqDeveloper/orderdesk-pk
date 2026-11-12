@@ -3,26 +3,22 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ImageOff,
   PackageSearch,
   SlidersHorizontal,
 } from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
 import EmptyState from "@/components/ui/EmptyState";
+import ProductImage from "@/components/ui/ProductImage";
 import StockAdjustmentModal from "@/components/inventory/StockAdjustmentModal";
 import { formatPKR, formatDate } from "@/lib/utils";
 import { getProductStockStatus } from "@/services/inventoryService";
 
 function ProductThumb({ product }) {
   return (
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-ink-100 bg-ink-50">
-      {product.image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={product.image_url} alt="" className="h-full w-full object-cover" />
-      ) : (
-        <ImageOff className="h-4 w-4 text-ink-300" aria-hidden="true" />
-      )}
-    </div>
+    <ProductImage
+      src={product.image_url}
+      className="h-11 w-11 rounded-lg border border-ink-100"
+    />
   );
 }
 

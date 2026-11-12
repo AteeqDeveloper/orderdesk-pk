@@ -23,7 +23,7 @@ export default async function CustomersPage({ searchParams }) {
           <h1 className="font-display text-xl text-ink-900">Customers</h1>
           <p className="mt-1 text-sm text-ink-500">Keep track of who you sell to.</p>
         </div>
-        <AddCustomerButton userId={user.id} />
+        <AddCustomerButton userId={user?.id} />
       </div>
 
       <CustomerFilters />

@@ -42,16 +42,25 @@ async function proxyRequest(request, context) {
       cache: "no-store",
     });
     const payload = await upstream.text();
-    if (
-      upstream.ok &&
-      ((request.method === "POST" && endpoint === "orders") ||
-        (request.method === "PATCH" && /^orders\/[^/]+$/.test(endpoint)))
-    ) {
-      revalidatePath("/dashboard");
-      revalidatePath("/dashboard/orders");
-      revalidatePath("/dashboard/orders/[id]", "page");
-      revalidatePath("/dashboard/customers");
-      revalidatePath("/dashboard/customers/[id]", "page");
+    if (upstream.ok) {
+      if (
+        (request.method === "POST" && endpoint === "orders") ||
+        (request.method === "PATCH" && /^orders\/[^/]+$/.test(endpoint))
+      ) {
+        revalidatePath("/dashboard");
+        revalidatePath("/dashboard/orders");
+        revalidatePath("/dashboard/orders/[id]", "page");
+        revalidatePath("/dashboard/customers");
+        revalidatePath("/dashboard/customers/[id]", "page");
+      } else if (
+        ((request.method === "POST" || request.method === "PATCH" || request.method === "DELETE") &&
+          /^products(\/.*)?$/.test(endpoint)) ||
+        (request.method === "PATCH" && /^inventory(\/.*)?$/.test(endpoint))
+      ) {
+        revalidatePath("/dashboard");
+        revalidatePath("/dashboard/products");
+        revalidatePath("/dashboard/inventory");
+      }
     }
 
     const responseHeaders = new Headers();

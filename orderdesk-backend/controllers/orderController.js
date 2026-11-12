@@ -79,7 +79,7 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // Combine duplicate product IDs into one quantity
+    // Combine duplicate product and variant items into aggregated quantities
     const quantities = new Map();
 
     for (const item of items) {
@@ -95,18 +95,28 @@ export const createOrder = async (req, res) => {
         });
       }
 
-      const key = item.productId.toString();
+      if (item.variantId && !validId(item.variantId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid variant ID",
+        });
+      }
 
-      quantities.set(
-        key,
-        (quantities.get(key) || 0) + item.quantity
-      );
+      const variantKey = item.variantId ? item.variantId.toString() : "";
+      const key = `${item.productId.toString()}:${variantKey}`;
+
+      const existing = quantities.get(key);
+      quantities.set(key, {
+        productId: item.productId,
+        variantId: item.variantId || null,
+        quantity: (existing?.quantity || 0) + item.quantity,
+      });
     }
 
     const orderItems = [];
     let subtotal = 0;
 
-    for (const [productId, quantity] of quantities) {
+    for (const { productId, variantId, quantity } of quantities.values()) {
       // Only select products owned by this seller
       const product = await Product.findOne({
         _id: productId,
@@ -118,43 +128,114 @@ export const createOrder = async (req, res) => {
         throw new Error(`PRODUCT_NOT_FOUND:${productId}`);
       }
 
-      // Atomically reduce stock only if enough is available
-      const updatedProduct = await Product.findOneAndUpdate(
-        {
-          _id: product._id,
-          userId,
-          stock: { $gte: quantity },
-          status: "active",
-        },
-        {
-          $inc: { stock: -quantity },
-        },
-        {
-          new: true,
+      if (variantId) {
+        const variant = product.variants?.id(variantId);
+        if (!variant || variant.status !== "active") {
+          throw new Error(`VARIANT_NOT_FOUND:${product.name}`);
         }
-      );
 
-      if (!updatedProduct) {
-        throw new Error(`INSUFFICIENT_STOCK:${product.name}`);
+        // Atomically reduce variant stock AND parent stock
+        const updatedProduct = await Product.findOneAndUpdate(
+          {
+            _id: product._id,
+            userId,
+            status: "active",
+            "variants._id": variant._id,
+            "variants.status": "active",
+            "variants.stock": { $gte: quantity },
+          },
+          {
+            $inc: {
+              "variants.$.stock": -quantity,
+              stock: -quantity,
+            },
+          },
+          {
+            new: true,
+          }
+        );
+
+        if (!updatedProduct) {
+          const variantName =
+            [variant.size, variant.color].filter(Boolean).join(" / ") || "variant";
+          throw new Error(`INSUFFICIENT_STOCK:${product.name} (${variantName})`);
+        }
+
+        decrementedProducts.push({
+          productId: product._id,
+          variantId: variant._id,
+          quantity,
+        });
+
+        const unitPrice =
+          typeof variant.price === "number" ? variant.price : product.price;
+        const lineTotal = unitPrice * quantity;
+        const variantDetails = [variant.size, variant.color].filter(Boolean).join(" / ");
+        const itemName = variantDetails
+          ? `${product.name} - ${variantDetails}`
+          : product.name;
+
+        orderItems.push({
+          productId: product._id,
+          variantId: variant._id,
+          name: itemName,
+          size: variant.size || "",
+          color: variant.color || "",
+          sku: variant.sku || product.sku || "",
+          quantity,
+          unitPrice,
+          lineTotal,
+        });
+
+        subtotal += lineTotal;
+      } else {
+        if (product.hasVariants && product.variants.length > 0) {
+          throw new Error(`VARIANT_REQUIRED:${product.name}`);
+        }
+
+        // Atomically reduce stock only if enough is available
+        const updatedProduct = await Product.findOneAndUpdate(
+          {
+            _id: product._id,
+            userId,
+            stock: { $gte: quantity },
+            status: "active",
+          },
+          {
+            $inc: { stock: -quantity },
+          },
+          {
+            new: true,
+          }
+        );
+
+        if (!updatedProduct) {
+          throw new Error(`INSUFFICIENT_STOCK:${product.name}`);
+        }
+
+        decrementedProducts.push({
+          productId: product._id,
+          variantId: null,
+          quantity,
+        });
+
+        const unitPrice = product.price;
+        const lineTotal = unitPrice * quantity;
+
+        orderItems.push({
+          productId: product._id,
+          variantId: null,
+          name: product.name,
+          size: "",
+          color: "",
+          sku: product.sku || "",
+          quantity,
+          unitPrice,
+          lineTotal,
+        });
+
+        subtotal += lineTotal;
       }
-
-      decrementedProducts.push({
-        productId: product._id,
-        quantity,
-      });
-
-      const lineTotal = product.price * quantity;
-
-      orderItems.push({
-        productId: product._id,
-        name: product.name,
-        sku: product.sku || "",
-        quantity,
-        unitPrice: product.price,
-        lineTotal,
-      });
-
-      subtotal += lineTotal;
     }
 
     const totalAmount = subtotal - discount + deliveryCharges;
@@ -192,15 +273,31 @@ export const createOrder = async (req, res) => {
     // Restore stock if order creation fails
     for (const item of decrementedProducts) {
       try {
-        await Product.updateOne(
-          {
-            _id: item.productId,
-            userId,
-          },
-          {
-            $inc: { stock: item.quantity },
-          }
-        );
+        if (item.variantId) {
+          await Product.updateOne(
+            {
+              _id: item.productId,
+              userId,
+              "variants._id": item.variantId,
+            },
+            {
+              $inc: {
+                "variants.$.stock": item.quantity,
+                stock: item.quantity,
+              },
+            }
+          );
+        } else {
+          await Product.updateOne(
+            {
+              _id: item.productId,
+              userId,
+            },
+            {
+              $inc: { stock: item.quantity },
+            }
+          );
+        }
       } catch (rollbackError) {
         console.error(
           "Stock rollback failed:",
@@ -213,6 +310,21 @@ export const createOrder = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "One or more products were not found or are inactive",
+      });
+    }
+
+    if (error.message.startsWith("VARIANT_REQUIRED:")) {
+      const prodName = error.message.replace("VARIANT_REQUIRED:", "");
+      return res.status(400).json({
+        success: false,
+        message: `Please select a variant for ${prodName}`,
+      });
+    }
+
+    if (error.message.startsWith("VARIANT_NOT_FOUND:")) {
+      return res.status(404).json({
+        success: false,
+        message: "One or more selected variants were not found or are inactive",
       });
     }
 
@@ -421,14 +533,44 @@ export const updateOrder = async (req, res) => {
         }
 
         for (const item of order.items) {
-          const stockUpdate = await Product.updateOne(
-            {
-              _id: item.productId,
-              userId: req.user._id,
-            },
-            { $inc: { stock: item.quantity } },
-            { session }
-          );
+          let stockUpdate;
+          if (item.variantId) {
+            stockUpdate = await Product.updateOne(
+              {
+                _id: item.productId,
+                userId: req.user._id,
+                "variants._id": item.variantId,
+              },
+              {
+                $inc: {
+                  "variants.$.stock": item.quantity,
+                  stock: item.quantity,
+                },
+              },
+              { session }
+            );
+
+            // If the specific variant was removed from the product, restore parent stock
+            if (stockUpdate.matchedCount === 0) {
+              stockUpdate = await Product.updateOne(
+                {
+                  _id: item.productId,
+                  userId: req.user._id,
+                },
+                { $inc: { stock: item.quantity } },
+                { session }
+              );
+            }
+          } else {
+            stockUpdate = await Product.updateOne(
+              {
+                _id: item.productId,
+                userId: req.user._id,
+              },
+              { $inc: { stock: item.quantity } },
+              { session }
+            );
+          }
 
           if (stockUpdate.matchedCount !== 1) {
             throw new Error(`Could not restore stock for product ${item.productId}`);

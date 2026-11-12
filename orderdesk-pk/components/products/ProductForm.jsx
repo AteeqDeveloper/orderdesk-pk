@@ -1,15 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ImageOff } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 import Select from "@/components/ui/Select";
 import Label, { FieldError } from "@/components/ui/Label";
+import ProductImage from "@/components/ui/ProductImage";
 import { PRODUCT_STATUSES } from "@/lib/constants";
 import { createProduct, updateProduct } from "@/services/productService";
+import { uploadProductImage } from "@/services/uploadService";
+
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 function toFormState(product) {
   return {
@@ -26,28 +31,87 @@ function toFormState(product) {
   };
 }
 
-export default function ProductForm({ userId, product, categories = [] }) {
+export default function ProductForm({
+  userId,
+  product,
+  categories = [],
+  initialSuccessMessage = "",
+}) {
   const router = useRouter();
   const isEditing = Boolean(product);
+  const imageInputRef = useRef(null);
 
   const [form, setForm] = useState(toFormState(product));
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
+  const [imageError, setImageError] = useState("");
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState(initialSuccessMessage);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedImage) {
+      setImagePreview("");
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(selectedImage);
+    setImagePreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [selectedImage]);
 
   function handleChange(e) {
     setSuccessMessage("");
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
+  function handleImageChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setImageError("Choose a JPG, PNG, or WebP image.");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      setImageError("Image must be 5 MB or smaller.");
+      e.target.value = "";
+      return;
+    }
+
+    setImageError("");
+    setFormError("");
+    setSuccessMessage("");
+    setSelectedImage(file);
+  }
+
+  function handleRemoveImage() {
+    setSelectedImage(null);
+    setImagePreview("");
+    setImageError("");
+    if (imageInputRef.current) imageInputRef.current.value = "";
+    setForm((prev) => ({ ...prev, image_url: "" }));
+    setSuccessMessage("");
+  }
+
   function validate() {
     const nextErrors = {};
     if (!form.name.trim()) nextErrors.name = "Product name is required.";
-    if (form.price === "" || Number(form.price) < 0)
+    if (
+      form.price === "" ||
+      !Number.isFinite(Number(form.price)) ||
+      Number(form.price) < 0
+    )
       nextErrors.price = "Enter a valid price.";
-    if (form.cost_price !== "" && Number(form.cost_price) < 0)
-      nextErrors.cost_price = "Cost price can't be negative.";
+    if (
+      form.cost_price !== "" &&
+      (!Number.isFinite(Number(form.cost_price)) || Number(form.cost_price) < 0)
+    )
+      nextErrors.cost_price = "Enter a valid cost price.";
     if (form.stock === "" || Number(form.stock) < 0 || !Number.isInteger(Number(form.stock)))
       nextErrors.stock = "Enter a whole number for stock.";
     if (
@@ -62,45 +126,63 @@ export default function ProductForm({ userId, product, categories = [] }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (saving) return;
     setFormError("");
-    if (!validate()) return;
-
-    const values = {
-      name: form.name.trim(),
-      sku: form.sku.trim() || null,
-      description: form.description.trim() || null,
-      price: Number(form.price),
-      cost_price: form.cost_price === "" ? null : Number(form.cost_price),
-      category: form.category.trim() || null,
-      stock: Number(form.stock),
-      low_stock_threshold:
-        form.low_stock_threshold === "" ? 0 : Number(form.low_stock_threshold),
-      image_url: form.image_url.trim() || null,
-      status: form.status,
-    };
+    setSuccessMessage("");
+    if (!validate() || imageError) return;
 
     setSaving(true);
-    const { product: saved, error } = isEditing
-      ? await updateProduct(product.id, values)
-      : await createProduct(userId, values);
-    setSaving(false);
+    try {
+      let imageUrl = form.image_url.trim();
+      if (selectedImage) {
+        setUploading(true);
+        try {
+          imageUrl = await uploadProductImage(selectedImage);
+        } finally {
+          setUploading(false);
+        }
+      }
 
-    if (error) {
-      setFormError(error.message || "Couldn't save this product. Please try again.");
-      return;
-    }
+      const values = {
+        name: form.name.trim(),
+        sku: form.sku.trim() || null,
+        description: form.description.trim() || null,
+        price: Number(form.price),
+        cost_price: form.cost_price === "" ? null : Number(form.cost_price),
+        category: form.category.trim() || null,
+        stock: Number(form.stock),
+        low_stock_threshold:
+          form.low_stock_threshold === "" ? 0 : Number(form.low_stock_threshold),
+        image_url: imageUrl || null,
+        status: form.status,
+      };
 
-    if (isEditing) {
-      setSuccessMessage("Product details saved successfully.");
-      router.refresh();
-    } else {
-      // Open the saved product so its details can be reviewed or edited.
-      if (saved?.id) {
-        router.push(`/dashboard/products/${saved.id}`);
+      const { product: saved, error } = isEditing
+        ? await updateProduct(product.id, values)
+        : await createProduct(userId, values);
+
+      if (error) {
+        setFormError(error.message || "Couldn't save this product. Please try again.");
+        return;
+      }
+
+      setForm((prev) => ({ ...prev, image_url: imageUrl }));
+      setSelectedImage(null);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+      if (isEditing) {
+        setSuccessMessage("Product details saved successfully.");
+        router.refresh();
+      } else if (saved?.id) {
+        router.push(`/dashboard/products/${saved.id}?created=1`);
+        router.refresh();
       } else {
         router.push("/dashboard/products");
+        router.refresh();
       }
-      router.refresh();
+    } catch (error) {
+      setFormError(error.message || "Couldn't save this product. Please try again.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -283,27 +365,52 @@ export default function ProductForm({ userId, product, categories = [] }) {
       <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card sm:p-6">
         <h2 className="font-display text-base text-ink-900">Product image</h2>
 
-        <div className="mt-4 flex items-start gap-4">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-ink-100 bg-ink-50">
-            {form.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={form.image_url} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <ImageOff className="h-5 w-5 text-ink-300" aria-hidden="true" />
-            )}
-          </div>
+        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+          <ProductImage
+            src={imagePreview || form.image_url}
+            alt="Product image preview"
+            className="aspect-square h-28 w-28 rounded-lg border border-ink-100 sm:h-32 sm:w-32"
+            iconClassName="h-6 w-6 text-ink-300"
+          />
 
-          <div className="flex-1 space-y-2.5">
-            <p className="text-sm text-ink-500">
-              File uploads are not supported by the backend yet.
-            </p>
-
+          <div className="min-w-0 flex-1 space-y-2.5">
+            <Label htmlFor="product-image">Upload an image</Label>
             <Input
-              name="image_url"
-              placeholder="Or paste an image URL"
-              value={form.image_url}
-              onChange={handleChange}
+              id="product-image"
+              ref={imageInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+              onChange={handleImageChange}
+              disabled={saving}
+              error={Boolean(imageError)}
+              aria-describedby="product-image-help"
             />
+            <p id="product-image-help" className="text-xs text-ink-400">
+              JPG, PNG, or WebP. Maximum file size: 5 MB.
+            </p>
+            <FieldError message={imageError} />
+            {selectedImage && (
+              <p className="truncate text-sm text-ink-600" title={selectedImage.name}>
+                Selected: {selectedImage.name}
+              </p>
+            )}
+            {(selectedImage || form.image_url) && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="px-0 py-1 text-red-600 hover:bg-transparent hover:text-red-700"
+                onClick={handleRemoveImage}
+                disabled={saving}
+              >
+                Remove image
+              </Button>
+            )}
+            {uploading && (
+              <p role="status" className="flex items-center gap-2 text-sm text-brand-700">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Uploading image…
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -316,8 +423,14 @@ export default function ProductForm({ userId, product, categories = [] }) {
         >
           Cancel
         </Button>
-        <Button type="submit" loading={saving}>
-          {isEditing ? "Save changes" : "Add product"}
+        <Button type="submit" loading={saving} disabled={uploading}>
+          {uploading
+            ? "Uploading image"
+            : saving
+            ? "Saving"
+            : isEditing
+            ? "Save changes"
+            : "Add product"}
         </Button>
       </div>
     </form>

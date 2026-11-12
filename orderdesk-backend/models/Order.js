@@ -8,9 +8,24 @@ const orderItemSchema = new mongoose.Schema(
       required: true,
     },
 
+    variantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+
     name: {
       type: String,
       required: true,
+    },
+
+    size: {
+      type: String,
+      default: "",
+    },
+
+    color: {
+      type: String,
+      default: "",
     },
 
     sku: {

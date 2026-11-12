@@ -6,6 +6,7 @@ import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Label from "@/components/ui/Label";
+import ProductImage from "@/components/ui/ProductImage";
 import { updateProductStock } from "@/services/inventoryService";
 
 export default function StockAdjustmentModal({ product, open, onClose, onUpdated }) {
@@ -81,18 +82,10 @@ export default function StockAdjustmentModal({ product, open, onClose, onUpdated
       <div className="space-y-5">
         {/* Product Details Header */}
         <div className="flex items-center gap-3 rounded-lg border border-ink-100 bg-ink-50/60 p-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-ink-100 bg-white">
-            {product.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={product.image_url}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span className="text-xs font-semibold text-ink-400">IMG</span>
-            )}
-          </div>
+          <ProductImage
+            src={product.image_url}
+            className="h-12 w-12 rounded-md border border-ink-100 bg-white"
+          />
           <div className="min-w-0 flex-1">
             <h3 className="truncate font-medium text-ink-900">{product.name}</h3>
             <p className="text-xs text-ink-500">

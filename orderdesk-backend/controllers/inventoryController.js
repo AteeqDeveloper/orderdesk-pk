@@ -23,13 +23,34 @@ export const getInventory = async (req, res) => {
   }
 };
 
-// GET: Low-stock products
+// GET: Low-stock products (checks both parent level and variant level)
 export const getLowStockProducts = async (req, res) => {
   try {
     const products = await Product.find({
       userId: req.user._id,
       $expr: {
-        $lte: ["$stock", "$lowStockThreshold"],
+        $or: [
+          { $lte: ["$stock", "$lowStockThreshold"] },
+          {
+            $gt: [
+              {
+                $size: {
+                  $filter: {
+                    input: { $ifNull: ["$variants", []] },
+                    as: "v",
+                    cond: {
+                      $and: [
+                        { $eq: ["$$v.status", "active"] },
+                        { $lte: ["$$v.stock", "$$v.lowStockThreshold"] },
+                      ],
+                    },
+                  },
+                },
+              },
+              0,
+            ],
+          },
+        ],
       },
     }).sort({ stock: 1 });
 
@@ -48,11 +69,11 @@ export const getLowStockProducts = async (req, res) => {
   }
 };
 
-// PATCH: Adjust stock
+// PATCH: Adjust stock (supports both parent product and variant level)
 export const adjustStock = async (req, res) => {
   try {
     const { id } = req.params;
-    const { change } = req.body;
+    const { change, variantId } = req.body;
 
     if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({
@@ -72,49 +93,101 @@ export const adjustStock = async (req, res) => {
       });
     }
 
-    const filter = {
-      _id: id,
-      userId: req.user._id,
-    };
+    // 1. Variant-level adjustment
+    if (variantId) {
+      if (!mongoose.isValidObjectId(variantId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid variant ID.",
+        });
+      }
 
-    // Prevent stock from becoming negative.
-    if (change < 0) {
-      filter.stock = { $gte: Math.abs(change) };
-    }
-
-    const product = await Product.findOneAndUpdate(
-      filter,
-      { $inc: { stock: change } },
-      { new: true, runValidators: true }
-    );
-
-    if (!product) {
-      const ownedProduct = await Product.exists({
+      const product = await Product.findOne({
         _id: id,
         userId: req.user._id,
       });
 
-      if (!ownedProduct) {
+      if (!product) {
         return res.status(404).json({
           success: false,
           message: "Product not found.",
         });
       }
 
+      const variant = product.variants.id(variantId);
+      if (!variant) {
+        return res.status(404).json({
+          success: false,
+          message: "Variant not found in this product.",
+        });
+      }
+
+      if (change < 0 && variant.stock < Math.abs(change)) {
+        return res.status(409).json({
+          success: false,
+          message: "Insufficient stock for this variant adjustment.",
+        });
+      }
+
+      variant.stock += change;
+      product.stock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+      await product.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Variant stock adjusted successfully.",
+        data: {
+          productId: product._id,
+          variantId: variant._id,
+          name: product.name,
+          variantName:
+            [variant.size, variant.color].filter(Boolean).join(" / ") || "Variant",
+          stock: variant.stock,
+          totalProductStock: product.stock,
+          lowStock: variant.stock <= variant.lowStockThreshold,
+        },
+      });
+    }
+
+    // 2. Product-level adjustment
+    const existingProduct = await Product.findOne({
+      _id: id,
+      userId: req.user._id,
+    });
+
+    if (!existingProduct) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found.",
+      });
+    }
+
+    if (existingProduct.hasVariants && existingProduct.variants.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This product has variants. Please specify a variantId to adjust stock.",
+      });
+    }
+
+    if (change < 0 && existingProduct.stock < Math.abs(change)) {
       return res.status(409).json({
         success: false,
         message: "Insufficient stock for this adjustment.",
       });
     }
 
+    existingProduct.stock += change;
+    await existingProduct.save();
+
     return res.status(200).json({
       success: true,
       message: "Stock adjusted successfully.",
       data: {
-        productId: product._id,
-        name: product.name,
-        stock: product.stock,
-        lowStock: product.stock <= product.lowStockThreshold,
+        productId: existingProduct._id,
+        name: existingProduct.name,
+        stock: existingProduct.stock,
+        lowStock: existingProduct.stock <= existingProduct.lowStockThreshold,
       },
     });
   } catch (error) {
@@ -133,9 +206,7 @@ export const getInventorySummary = async (req, res) => {
     const summary = await Product.aggregate([
       {
         $match: {
-          userId: new mongoose.Types.ObjectId(
-            req.user._id.toString()
-          ),
+          userId: new mongoose.Types.ObjectId(req.user._id.toString()),
         },
       },
       {
@@ -146,7 +217,30 @@ export const getInventorySummary = async (req, res) => {
           lowStockCount: {
             $sum: {
               $cond: [
-                { $lte: ["$stock", "$lowStockThreshold"] },
+                {
+                  $or: [
+                    { $lte: ["$stock", "$lowStockThreshold"] },
+                    {
+                      $gt: [
+                        {
+                          $size: {
+                            $filter: {
+                              input: { $ifNull: ["$variants", []] },
+                              as: "v",
+                              cond: {
+                                $and: [
+                                  { $eq: ["$$v.status", "active"] },
+                                  { $lte: ["$$v.stock", "$$v.lowStockThreshold"] },
+                                ],
+                              },
+                            },
+                          },
+                        },
+                        0,
+                      ],
+                    },
+                  ],
+                },
                 1,
                 0,
               ],
