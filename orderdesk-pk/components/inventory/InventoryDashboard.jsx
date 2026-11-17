@@ -6,6 +6,7 @@ export default function InventoryDashboard({ stats }) {
     totalProducts = 0,
     totalStockUnits = 0,
     lowStockCount = 0,
+    lowStockVariantCount = 0,
     outOfStockCount = 0,
     totalInventoryValue = 0,
   } = stats || {};
@@ -35,6 +36,16 @@ export default function InventoryDashboard({ stats }) {
         : "text-ink-600 bg-ink-50 border-ink-100",
     },
     {
+      label: "Low Stock Variants",
+      value: lowStockVariantCount.toLocaleString(),
+      icon: AlertTriangle,
+      tone: lowStockVariantCount > 0 ? "warning" : "default",
+      color:
+        lowStockVariantCount > 0
+          ? "text-amber-700 bg-amber-50 border-amber-200"
+          : "text-ink-600 bg-ink-50 border-ink-100",
+    },
+    {
       label: "Out of Stock Products",
       value: outOfStockCount.toLocaleString(),
       icon: AlertOctagon,
@@ -54,7 +65,7 @@ export default function InventoryDashboard({ stats }) {
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
       {cards.map((card) => {
         const Icon = card.icon;
         return (

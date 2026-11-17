@@ -9,6 +9,7 @@ import Textarea from "@/components/ui/Textarea";
 import Select from "@/components/ui/Select";
 import Label, { FieldError } from "@/components/ui/Label";
 import ProductImage from "@/components/ui/ProductImage";
+import VariantManager from "@/components/products/VariantManager";
 import { PRODUCT_STATUSES } from "@/lib/constants";
 import { createProduct, updateProduct } from "@/services/productService";
 import { uploadProductImage } from "@/services/uploadService";
@@ -42,6 +43,10 @@ export default function ProductForm({
   const imageInputRef = useRef(null);
 
   const [form, setForm] = useState(toFormState(product));
+  const [hasVariants, setHasVariants] = useState(
+    Boolean(product?.has_variants || product?.variants?.length)
+  );
+  const [variants, setVariants] = useState(product?.variants || []);
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
   const [imageError, setImageError] = useState("");
@@ -49,6 +54,7 @@ export default function ProductForm({
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState(initialSuccessMessage);
   const [saving, setSaving] = useState(false);
+  const [variantBusy, setVariantBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -65,6 +71,33 @@ export default function ProductForm({
   function handleChange(e) {
     setSuccessMessage("");
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  }
+
+  function handleVariantToggle(e) {
+    const enabled = e.target.checked;
+    setFormError("");
+    if (!enabled && variants.length > 0) {
+      setFormError("Remove all variants before switching to standard stock tracking.");
+      return;
+    }
+    setHasVariants(enabled);
+  }
+
+  function handleVariantsChange(nextVariants) {
+    setVariants(nextVariants);
+    if (isEditing && nextVariants.length === 0) {
+      setHasVariants(false);
+    }
+  }
+
+  function handleVariantProductUpdated(updatedProduct) {
+    if (!updatedProduct) return;
+    setForm((prev) => ({
+      ...prev,
+      stock: String(updatedProduct.stock ?? prev.stock),
+    }));
+    setHasVariants(Boolean(updatedProduct.has_variants));
+    router.refresh();
   }
 
   function handleImageChange(e) {
@@ -112,21 +145,30 @@ export default function ProductForm({
       (!Number.isFinite(Number(form.cost_price)) || Number(form.cost_price) < 0)
     )
       nextErrors.cost_price = "Enter a valid cost price.";
-    if (form.stock === "" || Number(form.stock) < 0 || !Number.isInteger(Number(form.stock)))
+    if (
+      !hasVariants &&
+      (form.stock === "" ||
+        Number(form.stock) < 0 ||
+        !Number.isInteger(Number(form.stock)))
+    )
       nextErrors.stock = "Enter a whole number for stock.";
     if (
+      !hasVariants &&
       form.low_stock_threshold !== "" &&
       (Number(form.low_stock_threshold) < 0 ||
         !Number.isInteger(Number(form.low_stock_threshold)))
     )
       nextErrors.low_stock_threshold = "Enter a whole number.";
+    if (hasVariants && variants.length === 0) {
+      nextErrors.variants = "Add at least one variant or switch to standard stock tracking.";
+    }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (saving) return;
+    if (saving || variantBusy) return;
     setFormError("");
     setSuccessMessage("");
     if (!validate() || imageError) return;
@@ -155,6 +197,8 @@ export default function ProductForm({
           form.low_stock_threshold === "" ? 0 : Number(form.low_stock_threshold),
         image_url: imageUrl || null,
         status: form.status,
+        has_variants: hasVariants,
+        ...(!isEditing && hasVariants ? { variants } : {}),
       };
 
       const { product: saved, error } = isEditing
@@ -267,12 +311,37 @@ export default function ProductForm({
       </div>
 
       <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card sm:p-6">
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={hasVariants}
+            onChange={handleVariantToggle}
+            disabled={saving}
+            className="mt-1 h-4 w-4 rounded border-ink-300 text-brand-700 focus:ring-brand-600"
+          />
+          <span>
+            <span className="block text-sm font-medium text-ink-900">
+              Does this product have variants?
+            </span>
+            <span className="mt-1 block text-xs text-ink-500">
+              Track sizes, colors, prices, and stock separately for each option.
+            </span>
+          </span>
+        </label>
+        {errors.variants && (
+          <p role="alert" className="mt-3 text-sm text-red-600">
+            {errors.variants}
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card sm:p-6">
         <h2 className="font-display text-base text-ink-900">Pricing & stock</h2>
 
         <div className="mt-4 grid gap-5 sm:grid-cols-2">
           <div>
             <Label htmlFor="price" required>
-              Price (PKR)
+              {hasVariants ? "Base price (PKR)" : "Price (PKR)"}
             </Label>
             <Input
               id="price"
@@ -286,6 +355,11 @@ export default function ProductForm({
               error={!!errors.price}
             />
             <FieldError message={errors.price} />
+            {hasVariants && (
+              <p className="mt-1.5 text-xs text-ink-400">
+                Orders use the selected variant&apos;s price.
+              </p>
+            )}
           </div>
 
           <div>
@@ -307,42 +381,61 @@ export default function ProductForm({
             </p>
           </div>
 
-          <div>
-            <Label htmlFor="stock" required>
-              Stock
-            </Label>
-            <Input
-              id="stock"
-              name="stock"
-              type="number"
-              min="0"
-              step="1"
-              inputMode="numeric"
-              value={form.stock}
-              onChange={handleChange}
-              error={!!errors.stock}
-            />
-            <FieldError message={errors.stock} />
-          </div>
+          {hasVariants ? (
+            <div className="rounded-lg border border-brand-100 bg-brand-50/60 p-4 sm:col-span-2">
+              <p className="text-sm font-medium text-brand-900">
+                Total variant stock
+              </p>
+              <p className="mt-1 font-display text-2xl font-bold text-brand-800">
+                {variants.reduce(
+                  (total, variant) => total + (Number(variant.stock) || 0),
+                  0
+                )}
+              </p>
+              <p className="mt-1 text-xs text-brand-800">
+                Stock and low-stock thresholds are managed per variant below.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <Label htmlFor="stock" required>
+                  Stock
+                </Label>
+                <Input
+                  id="stock"
+                  name="stock"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={form.stock}
+                  onChange={handleChange}
+                  error={!!errors.stock}
+                />
+                <FieldError message={errors.stock} />
+              </div>
 
-          <div>
-            <Label htmlFor="low_stock_threshold">Low stock threshold</Label>
-            <Input
-              id="low_stock_threshold"
-              name="low_stock_threshold"
-              type="number"
-              min="0"
-              step="1"
-              inputMode="numeric"
-              value={form.low_stock_threshold}
-              onChange={handleChange}
-              error={!!errors.low_stock_threshold}
-            />
-            <FieldError message={errors.low_stock_threshold} />
-            <p className="mt-1.5 text-xs text-ink-400">
-              You&apos;ll see a low-stock warning at or below this number.
-            </p>
-          </div>
+              <div>
+                <Label htmlFor="low_stock_threshold">Low stock threshold</Label>
+                <Input
+                  id="low_stock_threshold"
+                  name="low_stock_threshold"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={form.low_stock_threshold}
+                  onChange={handleChange}
+                  error={!!errors.low_stock_threshold}
+                />
+                <FieldError message={errors.low_stock_threshold} />
+                <p className="mt-1.5 text-xs text-ink-400">
+                  You&apos;ll see a low-stock warning at or below this number.
+                </p>
+              </div>
+            </>
+          )}
 
           <div>
             <Label htmlFor="status">Status</Label>
@@ -361,6 +454,21 @@ export default function ProductForm({
           </div>
         </div>
       </div>
+
+      {hasVariants && (
+        <VariantManager
+          productId={isEditing ? product.id : null}
+          variants={variants}
+          onChange={handleVariantsChange}
+          onProductUpdated={handleVariantProductUpdated}
+          onBusyChange={setVariantBusy}
+          defaultPrice={form.price}
+          defaultCostPrice={form.cost_price}
+          defaultThreshold={form.low_stock_threshold}
+          defaultStock={variants.length === 0 ? form.stock : "0"}
+          disabled={saving}
+        />
+      )}
 
       <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card sm:p-6">
         <h2 className="font-display text-base text-ink-900">Product image</h2>
@@ -423,7 +531,11 @@ export default function ProductForm({
         >
           Cancel
         </Button>
-        <Button type="submit" loading={saving} disabled={uploading}>
+        <Button
+          type="submit"
+          loading={saving}
+          disabled={uploading || variantBusy}
+        >
           {uploading
             ? "Uploading image"
             : saving

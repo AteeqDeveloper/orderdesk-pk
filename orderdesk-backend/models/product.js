@@ -165,7 +165,13 @@ productSchema.index(
 
 productSchema.index(
   { userId: 1, "variants.sku": 1 },
-  { sparse: true }
+  {
+    name: "unique_seller_variant_sku",
+    unique: true,
+    partialFilterExpression: {
+      "variants.sku": { $type: "string", $gt: "" },
+    },
+  }
 );
 
 const Product = mongoose.model("Product", productSchema);

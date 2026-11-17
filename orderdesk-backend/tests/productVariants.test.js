@@ -11,8 +11,13 @@ import {
   getVariantById,
   updateVariant,
   deleteVariant,
+  updateProduct,
 } from "../controllers/productController.js";
-import { adjustStock, getLowStockProducts } from "../controllers/inventoryController.js";
+import {
+  adjustStock,
+  getInventory,
+  getLowStockProducts,
+} from "../controllers/inventoryController.js";
 import { createOrder, updateOrder } from "../controllers/orderController.js";
 import { isSkuAvailable, sanitizeVariantData } from "../utils/skuValidator.js";
 
@@ -163,6 +168,78 @@ test("2. Adding and updating variants modifies product variants and updates tota
     Product.findOne = originalFindOne;
     Product.find = originalFind;
   }
+});
+
+test("Updating a product preserves IDs for its existing variants", async () => {
+  const userId = new mongoose.Types.ObjectId();
+  const productId = new mongoose.Types.ObjectId();
+  const variantId = new mongoose.Types.ObjectId();
+  const originalFindOne = Product.findOne;
+  const originalFind = Product.find;
+  const originalFindOneAndUpdate = Product.findOneAndUpdate;
+  const product = new Product({
+    _id: productId,
+    userId,
+    name: "Classic Chiffon",
+    price: 3000,
+    variants: [
+      {
+        _id: variantId,
+        sku: "CHIFFON-M",
+        size: "M",
+        color: "Pink",
+        price: 3200,
+        stock: 12,
+      },
+    ],
+  });
+  let update;
+
+  Product.findOne = (filter) => {
+    if (filter?._id?.toString() === productId.toString()) {
+      return product;
+    }
+    return { lean: async () => null };
+  };
+  Product.find = () => ({
+    lean: async () => [
+      { variants: [{ _id: variantId, sku: "CHIFFON-M" }] },
+    ],
+  });
+  Product.findOneAndUpdate = async (_filter, updateDoc) => {
+    update = updateDoc.$set;
+    return product;
+  };
+
+  const req = {
+    user: { _id: userId },
+    params: { id: productId.toString() },
+    body: {
+      variants: [
+        {
+          _id: variantId.toString(),
+          sku: "CHIFFON-M",
+          size: "M",
+          color: "Pink",
+          price: 3200,
+          stock: 15,
+        },
+      ],
+    },
+  };
+  const res = mockRes();
+
+  try {
+    await updateProduct(req, res);
+  } finally {
+    Product.findOne = originalFindOne;
+    Product.find = originalFind;
+    Product.findOneAndUpdate = originalFindOneAndUpdate;
+  }
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(update.variants[0]._id.toString(), variantId.toString());
+  assert.equal(update.stock, 15);
 });
 
 // -----------------------------------------------------------------------------
@@ -353,8 +430,13 @@ test("6 & 7. Creating an order using a variant deducts variant stock and capture
   let stockDeducted = false;
   Product.findOneAndUpdate = async (filter, update) => {
     assert.equal(filter._id.toString(), productId.toString());
-    assert.equal(filter["variants._id"].toString(), variantId.toString());
-    assert.deepEqual(filter["variants.stock"], { $gte: 2 });
+    assert.deepEqual(filter.variants, {
+      $elemMatch: {
+        _id: variantId,
+        status: "active",
+        stock: { $gte: 2 },
+      },
+    });
     assert.deepEqual(update.$inc, {
       "variants.$.stock": -2,
       stock: -2,
@@ -624,4 +706,240 @@ test("10. Access control rejects access to other sellers' products and variants"
   } finally {
     Product.findOne = originalFindOne;
   }
+});
+
+test("A supplied empty variant ID is rejected instead of treated as a normal product", async () => {
+  const userId = new mongoose.Types.ObjectId();
+  const customerId = new mongoose.Types.ObjectId();
+  const productId = new mongoose.Types.ObjectId();
+  const originalFindOneCustomer = Customer.findOne;
+  const originalFindOneProduct = Product.findOne;
+
+  Customer.findOne = async () => ({ _id: customerId });
+  Product.findOne = async () => {
+    throw new Error("Product lookup should not happen for an invalid variant ID");
+  };
+
+  const req = {
+    user: { _id: userId },
+    body: {
+      customerId: customerId.toString(),
+      items: [{ productId: productId.toString(), variantId: "", quantity: 1 }],
+    },
+  };
+  const res = mockRes();
+
+  try {
+    await createOrder(req, res);
+  } finally {
+    Customer.findOne = originalFindOneCustomer;
+    Product.findOne = originalFindOneProduct;
+  }
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.message, "Invalid variant ID");
+});
+
+test("Repeated order submissions with the same idempotency key do not deduct stock twice", async () => {
+  const userId = new mongoose.Types.ObjectId();
+  const customerId = new mongoose.Types.ObjectId();
+  const productId = new mongoose.Types.ObjectId();
+  const key = "123e4567-e89b-42d3-a456-426614174000";
+  const originalFindOneCustomer = Customer.findOne;
+  const originalFindOneProduct = Product.findOne;
+  const originalFindOneAndUpdateProduct = Product.findOneAndUpdate;
+  const originalFindOneOrder = Order.findOne;
+  const originalCreateOrder = Order.create;
+  let stockDeductionCount = 0;
+  let savedOrder = null;
+
+  Customer.findOne = async () => ({
+    _id: customerId,
+    name: "Amina Khan",
+    phone: "03001234567",
+  });
+  Product.findOne = async () => ({
+    _id: productId,
+    userId,
+    name: "Lawn Shirt",
+    price: 2500,
+    stock: 5,
+    status: "active",
+    hasVariants: false,
+    variants: [],
+  });
+  Product.findOneAndUpdate = async () => {
+    stockDeductionCount += 1;
+    return { _id: productId };
+  };
+  Order.findOne = async (filter) => {
+    assert.equal(filter.userId.toString(), userId.toString());
+    assert.equal(filter.idempotencyKey, key);
+    return savedOrder;
+  };
+  Order.create = async (doc) => {
+    savedOrder = doc;
+    return doc;
+  };
+
+  const request = {
+    user: { _id: userId },
+    headers: { "idempotency-key": key },
+    body: {
+      customerId: customerId.toString(),
+      items: [{ productId: productId.toString(), quantity: 1 }],
+    },
+  };
+  const firstResponse = mockRes();
+  const retryResponse = mockRes();
+
+  try {
+    await createOrder(request, firstResponse);
+    await createOrder(request, retryResponse);
+  } finally {
+    Customer.findOne = originalFindOneCustomer;
+    Product.findOne = originalFindOneProduct;
+    Product.findOneAndUpdate = originalFindOneAndUpdateProduct;
+    Order.findOne = originalFindOneOrder;
+    Order.create = originalCreateOrder;
+  }
+
+  assert.equal(firstResponse.statusCode, 201);
+  assert.equal(retryResponse.statusCode, 200);
+  assert.equal(retryResponse.body.order, savedOrder);
+  assert.equal(stockDeductionCount, 1);
+});
+
+test("Concurrent duplicate submissions roll back the losing stock deduction", async () => {
+  const userId = new mongoose.Types.ObjectId();
+  const customerId = new mongoose.Types.ObjectId();
+  const productId = new mongoose.Types.ObjectId();
+  const key = "123e4567-e89b-42d3-a456-426614174001";
+  const originalFindOneCustomer = Customer.findOne;
+  const originalFindOneProduct = Product.findOne;
+  const originalFindOneAndUpdateProduct = Product.findOneAndUpdate;
+  const originalUpdateOneProduct = Product.updateOne;
+  const originalFindOneOrder = Order.findOne;
+  const originalCreateOrder = Order.create;
+  let orderLookupCount = 0;
+  let createCount = 0;
+  let stockDeductionCount = 0;
+  let stockRestorationCount = 0;
+  let savedOrder = null;
+
+  Customer.findOne = async () => ({
+    _id: customerId,
+    name: "Amina Khan",
+    phone: "03001234567",
+  });
+  Product.findOne = async () => ({
+    _id: productId,
+    userId,
+    name: "Lawn Shirt",
+    price: 2500,
+    stock: 5,
+    status: "active",
+    hasVariants: false,
+    variants: [],
+  });
+  Product.findOneAndUpdate = async () => {
+    stockDeductionCount += 1;
+    return { _id: productId };
+  };
+  Product.updateOne = async () => {
+    stockRestorationCount += 1;
+    return { matchedCount: 1 };
+  };
+  Order.findOne = async () => {
+    orderLookupCount += 1;
+    return orderLookupCount === 3 ? savedOrder : null;
+  };
+  Order.create = async (doc) => {
+    createCount += 1;
+    if (createCount === 1) {
+      savedOrder = doc;
+      return doc;
+    }
+    const duplicateError = new Error("Duplicate idempotency key");
+    duplicateError.code = 11000;
+    throw duplicateError;
+  };
+
+  const request = {
+    user: { _id: userId },
+    headers: { "idempotency-key": key },
+    body: {
+      customerId: customerId.toString(),
+      items: [{ productId: productId.toString(), quantity: 1 }],
+    },
+  };
+  const firstResponse = mockRes();
+  const retryResponse = mockRes();
+
+  try {
+    await createOrder(request, firstResponse);
+    await createOrder(request, retryResponse);
+  } finally {
+    Customer.findOne = originalFindOneCustomer;
+    Product.findOne = originalFindOneProduct;
+    Product.findOneAndUpdate = originalFindOneAndUpdateProduct;
+    Product.updateOne = originalUpdateOneProduct;
+    Order.findOne = originalFindOneOrder;
+    Order.create = originalCreateOrder;
+  }
+
+  assert.equal(firstResponse.statusCode, 201);
+  assert.equal(retryResponse.statusCode, 200);
+  assert.equal(stockDeductionCount, 2);
+  assert.equal(stockRestorationCount, 1);
+});
+
+test("Inventory exposes active low-stock variants and derives total stock from variants", async () => {
+  const userId = new mongoose.Types.ObjectId();
+  const product = {
+    _id: new mongoose.Types.ObjectId(),
+    name: "Seasonal Kurta",
+    hasVariants: true,
+    stock: 999,
+    variants: [
+      {
+        _id: new mongoose.Types.ObjectId(),
+        size: "S",
+        color: "Blue",
+        stock: 2,
+        lowStockThreshold: 5,
+        status: "active",
+      },
+      {
+        _id: new mongoose.Types.ObjectId(),
+        size: "M",
+        color: "Blue",
+        stock: 8,
+        lowStockThreshold: 5,
+        status: "active",
+      },
+      {
+        _id: new mongoose.Types.ObjectId(),
+        size: "L",
+        color: "Blue",
+        stock: 0,
+        lowStockThreshold: 5,
+        status: "inactive",
+      },
+    ],
+  };
+  const originalFind = Product.find;
+  Product.find = () => ({ sort: async () => [product] });
+
+  const res = mockRes();
+  try {
+    await getInventory({ user: { _id: userId } }, res);
+  } finally {
+    Product.find = originalFind;
+  }
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.data[0].stock, 10);
+  assert.equal(res.body.data[0].lowStockVariants.length, 1);
+  assert.equal(res.body.data[0].lowStockVariants[0].variantName, "S / Blue");
 });

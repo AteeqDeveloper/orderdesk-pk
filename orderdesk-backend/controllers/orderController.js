@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import Order from "../models/Order.js";
+import Order, { getOrderRequestFingerprint } from "../models/Order.js";
 import Product from "../models/Product.js";
 import Customer from "../models/Customer.js";
 import {
@@ -20,8 +20,42 @@ const validMoney = (value) =>
 export const createOrder = async (req, res) => {
   const userId = req.user._id;
   const decrementedProducts = [];
+  const idempotencyKey =
+    req.get?.("Idempotency-Key") || req.headers?.["idempotency-key"];
+  const idempotencyFingerprint = idempotencyKey
+    ? getOrderRequestFingerprint(req.body || {})
+    : null;
 
   try {
+    if (
+      idempotencyKey !== undefined &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        idempotencyKey
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid idempotency key",
+      });
+    }
+
+    if (idempotencyKey) {
+      const previousOrder = await Order.findOne({ userId, idempotencyKey });
+      if (previousOrder) {
+        if (previousOrder.idempotencyFingerprint !== idempotencyFingerprint) {
+          return res.status(409).json({
+            success: false,
+            message: "This idempotency key was already used for a different order",
+          });
+        }
+        return res.status(200).json({
+          success: true,
+          message: "Order already created",
+          order: previousOrder,
+        });
+      }
+    }
+
     const {
       customerId,
       items,
@@ -95,7 +129,11 @@ export const createOrder = async (req, res) => {
         });
       }
 
-      if (item.variantId && !validId(item.variantId)) {
+      if (
+        item.variantId !== undefined &&
+        item.variantId !== null &&
+        !validId(item.variantId)
+      ) {
         return res.status(400).json({
           success: false,
           message: "Invalid variant ID",
@@ -140,9 +178,13 @@ export const createOrder = async (req, res) => {
             _id: product._id,
             userId,
             status: "active",
-            "variants._id": variant._id,
-            "variants.status": "active",
-            "variants.stock": { $gte: quantity },
+            variants: {
+              $elemMatch: {
+                _id: variant._id,
+                status: "active",
+                stock: { $gte: quantity },
+              },
+            },
           },
           {
             $inc: {
@@ -167,8 +209,15 @@ export const createOrder = async (req, res) => {
           quantity,
         });
 
-        const unitPrice =
-          typeof variant.price === "number" ? variant.price : product.price;
+        if (
+          typeof variant.price !== "number" ||
+          !Number.isFinite(variant.price) ||
+          variant.price < 0
+        ) {
+          throw new Error(`INVALID_VARIANT_PRICE:${product.name}`);
+        }
+
+        const unitPrice = variant.price;
         const lineTotal = unitPrice * quantity;
         const variantDetails = [variant.size, variant.color].filter(Boolean).join(" / ");
         const itemName = variantDetails
@@ -246,6 +295,9 @@ export const createOrder = async (req, res) => {
 
     const order = await Order.create({
       userId,
+      ...(idempotencyKey
+        ? { idempotencyKey, idempotencyFingerprint }
+        : {}),
       customerId: customer._id,
 
       customerSnapshot: {
@@ -271,6 +323,7 @@ export const createOrder = async (req, res) => {
     });
   } catch (error) {
     // Restore stock if order creation fails
+    let rollbackFailed = false;
     for (const item of decrementedProducts) {
       try {
         if (item.variantId) {
@@ -299,6 +352,7 @@ export const createOrder = async (req, res) => {
           );
         }
       } catch (rollbackError) {
+        rollbackFailed = true;
         console.error(
           "Stock rollback failed:",
           rollbackError.message
@@ -340,6 +394,23 @@ export const createOrder = async (req, res) => {
         success: false,
         message: "Discount cannot exceed subtotal",
       });
+    }
+
+    if (error.code === 11000 && idempotencyKey && !rollbackFailed) {
+      const previousOrder = await Order.findOne({ userId, idempotencyKey });
+      if (previousOrder) {
+        if (previousOrder.idempotencyFingerprint !== idempotencyFingerprint) {
+          return res.status(409).json({
+            success: false,
+            message: "This idempotency key was already used for a different order",
+          });
+        }
+        return res.status(200).json({
+          success: true,
+          message: "Order already created",
+          order: previousOrder,
+        });
+      }
     }
 
     console.error("Create order error:", error.message);

@@ -7,10 +7,54 @@ import DeleteProductButton from "@/components/products/DeleteProductButton";
 import { formatPKR, cn } from "@/lib/utils";
 
 function isLowStock(product) {
+  if (product.has_variants && product.variants?.length) {
+    return product.variants.some(
+      (variant) =>
+        variant.status === "active" &&
+        Number(variant.stock) <= Number(variant.lowStockThreshold ?? 5)
+    );
+  }
+
   return (
     product.status !== "archived" &&
     Number(product.stock) <= Number(product.low_stock_threshold ?? 0)
   );
+}
+
+function getPriceLabel(product) {
+  const prices = (product.variants || [])
+    .filter((variant) => variant.status === "active")
+    .map((variant) => Number(variant.price))
+    .filter(Number.isFinite);
+
+  if (prices.length === 0) return formatPKR(product.price);
+
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  return min === max
+    ? formatPKR(min)
+    : `${formatPKR(min)} – ${formatPKR(max)}`;
+}
+
+function getVariantSummary(product) {
+  const variants = product.variants || [];
+  if (!product.has_variants || variants.length === 0) return "";
+  const activeVariants = variants.filter((variant) => variant.status === "active");
+
+  const sizes = Array.from(
+    new Set(activeVariants.map((variant) => variant.size).filter(Boolean))
+  );
+  const colors = Array.from(
+    new Set(activeVariants.map((variant) => variant.color).filter(Boolean))
+  );
+
+  return [
+    `${variants.length} ${variants.length === 1 ? "variant" : "variants"}`,
+    sizes.length ? `Sizes ${sizes.join(", ")}` : "",
+    colors.length ? `Colors ${colors.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function ProductThumb({ product }) {
@@ -68,17 +112,24 @@ export default function ProductsTable({ products, hasFilters }) {
               <td className="px-5 py-3">
                 <div className="flex items-center gap-3">
                   <ProductThumb product={product} />
-                  <Link
-                    href={`/dashboard/products/${product.id}`}
-                    className="font-medium text-ink-900 hover:text-brand-700"
-                  >
-                    {product.name}
-                  </Link>
+                  <div className="min-w-0">
+                    <Link
+                      href={`/dashboard/products/${product.id}`}
+                      className="font-medium text-ink-900 hover:text-brand-700"
+                    >
+                      {product.name}
+                    </Link>
+                    {getVariantSummary(product) && (
+                      <p className="mt-0.5 max-w-[280px] truncate text-xs text-ink-500">
+                        {getVariantSummary(product)}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </td>
               <td className="px-5 py-3 text-ink-500">{product.sku || "—"}</td>
               <td className="px-5 py-3 text-ink-500">{product.category || "—"}</td>
-              <td className="px-5 py-3 text-ink-900">{formatPKR(product.price)}</td>
+              <td className="px-5 py-3 text-ink-900">{getPriceLabel(product)}</td>
               <td className="px-5 py-3">
                 <span
                   className={cn(
@@ -127,13 +178,18 @@ export default function ProductsTable({ products, hasFilters }) {
                 {product.name}
               </Link>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-500">
-                <span>{formatPKR(product.price)}</span>
+                <span>{getPriceLabel(product)}</span>
                 <span>&middot;</span>
                 <span className={isLowStock(product) ? "font-medium text-clay-600" : ""}>
                   Stock: {product.stock}
                 </span>
                 <StatusBadge status={product.status} type="product" />
               </div>
+              {getVariantSummary(product) && (
+                <p className="mt-1 truncate text-xs text-ink-400">
+                  {getVariantSummary(product)}
+                </p>
+              )}
             </div>
             <div className="flex shrink-0 items-center gap-1">
               <Link

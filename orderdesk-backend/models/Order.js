@@ -1,4 +1,19 @@
 import mongoose from "mongoose";
+import { createHash } from "node:crypto";
+
+export const getOrderRequestFingerprint = (requestBody) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify({
+        customerId: requestBody.customerId,
+        items: requestBody.items,
+        discount: requestBody.discount ?? 0,
+        deliveryCharges: requestBody.deliveryCharges ?? 0,
+        paymentMethod: requestBody.paymentMethod ?? "COD",
+        notes: requestBody.notes ?? "",
+      })
+    )
+    .digest("hex");
 
 const orderItemSchema = new mongoose.Schema(
   {
@@ -61,6 +76,15 @@ const orderSchema = new mongoose.Schema(
       ref: "User",
       required: true,
       index: true,
+    },
+
+    idempotencyKey: {
+      type: String,
+      trim: true,
+    },
+
+    idempotencyFingerprint: {
+      type: String,
     },
 
     customerId: {
@@ -139,6 +163,17 @@ const orderSchema = new mongoose.Schema(
     },
   },
   { timestamps: true }
+);
+
+orderSchema.index(
+  { userId: 1, idempotencyKey: 1 },
+  {
+    name: "unique_seller_order_idempotency_key",
+    unique: true,
+    partialFilterExpression: {
+      idempotencyKey: { $type: "string", $gt: "" },
+    },
+  }
 );
 
 const Order = mongoose.model("Order", orderSchema);

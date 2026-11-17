@@ -1,5 +1,13 @@
 import { apiRequest } from "@/lib/api";
 
+function mapVariant(variant) {
+  if (!variant) return null;
+  return {
+    ...variant,
+    id: String(variant._id || variant.id),
+  };
+}
+
 function mapProduct(product) {
   if (!product) return null;
   return {
@@ -10,22 +18,44 @@ function mapProduct(product) {
     low_stock_threshold: product.lowStockThreshold ?? product.low_stock_threshold ?? 5,
     created_at: product.createdAt ?? product.created_at,
     updated_at: product.updatedAt ?? product.updated_at,
+    has_variants: Boolean(product.hasVariants ?? product.has_variants),
+    variants: Array.isArray(product.variants)
+      ? product.variants.map(mapVariant)
+      : [],
   };
 }
 
 function mapProductInput(values) {
-  return {
+  const data = {
     name: values.name,
     sku: values.sku || "",
     description: values.description || "",
     price: Number(values.price),
     costPrice: values.cost_price === null ? 0 : Number(values.cost_price || 0),
-    stock: Number(values.stock),
     category: values.category || "General",
     imageUrl: values.image_url || "",
     lowStockThreshold: Number(values.low_stock_threshold ?? 5),
     status: values.status,
   };
+
+  if (values.has_variants && Array.isArray(values.variants)) {
+    data.hasVariants = true;
+    data.variants = values.variants.map((variant) => ({
+      size: variant.size || "",
+      color: variant.color || "",
+      sku: variant.sku || "",
+      price: Number(variant.price),
+      costPrice: Number(variant.costPrice || 0),
+      stock: Number(variant.stock),
+      lowStockThreshold: Number(variant.lowStockThreshold ?? 5),
+      imageUrl: variant.imageUrl || "",
+      status: variant.status || "active",
+    }));
+  } else {
+    data.stock = Number(values.stock);
+  }
+
+  return data;
 }
 
 async function fetchProducts(request) {
@@ -89,6 +119,71 @@ export async function updateProduct(id, values) {
       method: "PATCH",
       body: JSON.stringify(mapProductInput(values)),
     });
+    return { product: mapProduct(data.product), error: null };
+  } catch (error) {
+    return { product: null, error };
+  }
+}
+
+export async function getProductVariants(request, productId) {
+  try {
+    const data = await request(`products/${productId}/variants`);
+    return { variants: (data.variants || []).map(mapVariant), error: null };
+  } catch (error) {
+    return { variants: [], error };
+  }
+}
+
+export async function getProductVariantsById(productId) {
+  try {
+    const data = await apiRequest(`products/${productId}/variants`);
+    return { variants: (data.variants || []).map(mapVariant), error: null };
+  } catch (error) {
+    return { variants: [], error };
+  }
+}
+
+export async function addProductVariant(productId, values) {
+  try {
+    const data = await apiRequest(`products/${productId}/variants`, {
+      method: "POST",
+      body: JSON.stringify(values),
+    });
+    return {
+      variant: mapVariant(data.variant),
+      product: mapProduct(data.product),
+      error: null,
+    };
+  } catch (error) {
+    return { variant: null, product: null, error };
+  }
+}
+
+export async function updateProductVariant(productId, variantId, values) {
+  try {
+    const data = await apiRequest(
+      `products/${productId}/variants/${variantId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(values),
+      }
+    );
+    return {
+      variant: mapVariant(data.variant),
+      product: mapProduct(data.product),
+      error: null,
+    };
+  } catch (error) {
+    return { variant: null, product: null, error };
+  }
+}
+
+export async function deleteProductVariant(productId, variantId) {
+  try {
+    const data = await apiRequest(
+      `products/${productId}/variants/${variantId}`,
+      { method: "DELETE" }
+    );
     return { product: mapProduct(data.product), error: null };
   } catch (error) {
     return { product: null, error };

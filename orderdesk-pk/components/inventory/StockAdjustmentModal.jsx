@@ -26,6 +26,7 @@ export default function StockAdjustmentModal({ product, open, onClose, onUpdated
   if (!product) return null;
 
   const currentStock = Number(product.stock) || 0;
+  const variant = product.variant;
   const difference = stock - currentStock;
 
   function handleAdjustDelta(delta) {
@@ -37,10 +38,10 @@ export default function StockAdjustmentModal({ product, open, onClose, onUpdated
   function handleDirectChange(val) {
     setError("");
     setSuccess("");
-    const parsed = parseInt(val, 10);
+    const parsed = Number(val);
     if (val === "") {
       setStock(0);
-    } else if (!Number.isNaN(parsed)) {
+    } else if (Number.isSafeInteger(parsed)) {
       setStock(Math.max(0, parsed));
     }
   }
@@ -49,17 +50,19 @@ export default function StockAdjustmentModal({ product, open, onClose, onUpdated
     setError("");
     setSuccess("");
 
-    if (stock < 0 || Number.isNaN(stock)) {
-      setError("Stock cannot be negative.");
+    if (!Number.isSafeInteger(Number(stock)) || Number(stock) < 0) {
+      setError("Stock must be a non-negative whole number.");
       return;
     }
 
     setSubmitting(true);
-    const { product: updatedProduct, error: updateError } = await updateProductStock(
-      product.id,
-      stock,
-      currentStock
-    );
+    const { product: updatedProduct, error: updateError } =
+      await updateProductStock(
+        product.id,
+        Number(stock),
+        currentStock,
+        variant?.id
+      );
     setSubmitting(false);
 
     if (updateError) {
@@ -78,7 +81,11 @@ export default function StockAdjustmentModal({ product, open, onClose, onUpdated
   }
 
   return (
-    <Modal open={open} title="Adjust Product Stock" onClose={onClose}>
+    <Modal
+      open={open}
+      title={variant ? "Adjust Variant Stock" : "Adjust Product Stock"}
+      onClose={onClose}
+    >
       <div className="space-y-5">
         {/* Product Details Header */}
         <div className="flex items-center gap-3 rounded-lg border border-ink-100 bg-ink-50/60 p-3">
@@ -88,8 +95,17 @@ export default function StockAdjustmentModal({ product, open, onClose, onUpdated
           />
           <div className="min-w-0 flex-1">
             <h3 className="truncate font-medium text-ink-900">{product.name}</h3>
+            {variant && (
+              <p className="text-xs font-medium text-ink-700">
+                Variant: {[variant.size, variant.color].filter(Boolean).join(" / ") || "Standard"}
+              </p>
+            )}
             <p className="text-xs text-ink-500">
-              SKU: <span className="font-mono">{product.sku || "N/A"}</span> &middot; Category: {product.category || "Uncategorized"}
+              SKU:{" "}
+              <span className="font-mono">
+                {variant?.sku || product.sku || "N/A"}
+              </span>{" "}
+              &middot; Category: {product.category || "Uncategorized"}
             </p>
           </div>
         </div>

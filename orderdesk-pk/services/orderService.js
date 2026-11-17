@@ -17,6 +17,7 @@ export function mapOrder(order) {
       ...item,
       id: item._id || `${id}-${index}`,
       unit_price: item.unitPrice ?? item.unit_price ?? item.price,
+      line_total: item.lineTotal ?? item.line_total,
       products: { name: item.name || item.products?.name },
     })),
   };
@@ -46,13 +47,20 @@ export async function getOrderById(request, id) {
   }
 }
 
-export async function createOrder(values) {
+export async function createOrder(values, idempotencyKey) {
   try {
     const data = await apiRequest("orders", {
       method: "POST",
+      headers: idempotencyKey
+        ? { "Idempotency-Key": idempotencyKey }
+        : {},
       body: JSON.stringify({
         customerId: values.customerId,
-        items: values.items.map(({ productId, quantity }) => ({ productId, quantity })),
+        items: values.items.map(({ productId, variantId, quantity }) => ({
+          productId,
+          ...(variantId ? { variantId } : {}),
+          quantity,
+        })),
         discount: Number(values.discount || 0),
         deliveryCharges: Number(values.deliveryCharges || 0),
         paymentMethod: values.paymentMethod,

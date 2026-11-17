@@ -102,12 +102,21 @@ export default async function OrderDetailPage({ params }) {
                   <p className="font-medium text-ink-900">
                     {item.products?.name || "Product Item"}
                   </p>
+                  {(item.size || item.color || item.sku) && (
+                    <p className="mt-0.5 text-xs text-ink-500">
+                      {[item.size, item.color].filter(Boolean).join(" / ")}
+                      {item.sku ? ` · SKU: ${item.sku}` : ""}
+                    </p>
+                  )}
                   <p className="text-xs text-ink-400">
                     Qty: {item.quantity} &times; {formatPKR(item.unit_price)}
                   </p>
                 </div>
                 <span className="font-medium text-ink-900">
-                  {formatPKR((item.quantity || 1) * (item.unit_price || 0))}
+                  {formatPKR(
+                    item.line_total ??
+                      (item.quantity || 1) * (item.unit_price || 0)
+                  )}
                 </span>
               </li>
             ))}

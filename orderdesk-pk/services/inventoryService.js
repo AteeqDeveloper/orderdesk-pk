@@ -30,6 +30,13 @@ function mapProduct(product) {
     image_url: product.imageUrl ?? product.image_url ?? "",
     low_stock_threshold: product.lowStockThreshold ?? product.low_stock_threshold ?? 5,
     created_at: product.createdAt ?? product.created_at,
+    has_variants: Boolean(product.hasVariants ?? product.has_variants),
+    variants: Array.isArray(product.variants)
+      ? product.variants.map((variant) => ({
+          ...variant,
+          id: String(variant._id || variant.id),
+        }))
+      : [],
   };
 }
 
@@ -37,9 +44,14 @@ export function filterInventoryProducts(products, filters = {}) {
   let filtered = products;
   if (filters.search?.trim()) {
     const term = filters.search.trim().toLowerCase();
-    filtered = filtered.filter((product) =>
-      `${product.name} ${product.sku || ""}`.toLowerCase().includes(term)
-    );
+    filtered = filtered.filter((product) => {
+      const variantSearch = product.variants
+        .map((variant) => `${variant.sku || ""} ${variant.size || ""} ${variant.color || ""}`)
+        .join(" ");
+      return `${product.name} ${product.sku || ""} ${variantSearch}`
+        .toLowerCase()
+        .includes(term);
+    });
   }
   if (filters.category) {
     filtered = filtered.filter((product) => product.category === filters.category);
@@ -63,6 +75,7 @@ export async function getInventoryStats(request) {
       totalProducts: summary.totalProducts,
       totalStockUnits: summary.totalUnits,
       lowStockCount: summary.lowStockCount,
+      lowStockVariantCount: summary.lowStockVariantCount || 0,
       outOfStockCount: 0,
       inStockCount: 0,
       totalInventoryValue: 0,
@@ -73,7 +86,16 @@ export async function getInventoryStats(request) {
       const stock = Number(product.stock) || 0;
       if (stock === 0) stats.outOfStockCount += 1;
       else if (stock > Number(product.low_stock_threshold ?? 5)) stats.inStockCount += 1;
-      stats.totalInventoryValue += stock * (Number(product.cost_price) || 0);
+      if (product.has_variants && product.variants.length > 0) {
+        stats.totalInventoryValue += product.variants.reduce(
+          (total, variant) =>
+            total +
+            (Number(variant.stock) || 0) * (Number(variant.costPrice) || 0),
+          0
+        );
+      } else {
+        stats.totalInventoryValue += stock * (Number(product.cost_price) || 0);
+      }
     }
     return { ...stats, error: null };
   } catch (error) {
@@ -81,6 +103,7 @@ export async function getInventoryStats(request) {
       totalProducts: 0,
       totalStockUnits: 0,
       lowStockCount: 0,
+      lowStockVariantCount: 0,
       outOfStockCount: 0,
       inStockCount: 0,
       totalInventoryValue: 0,
@@ -91,11 +114,19 @@ export async function getInventoryStats(request) {
   }
 }
 
-export async function updateProductStock(productId, newStock, currentStock = 0) {
-  const parsedStock = Math.floor(Number(newStock));
+export async function updateProductStock(
+  productId,
+  newStock,
+  currentStock = 0,
+  variantId = null
+) {
+  const parsedStock = Number(newStock);
 
-  if (Number.isNaN(parsedStock) || parsedStock < 0) {
-    return { product: null, error: { message: "Stock quantity cannot be negative." } };
+  if (!Number.isSafeInteger(parsedStock) || parsedStock < 0) {
+    return {
+      product: null,
+      error: { message: "Stock must be a non-negative whole number." },
+    };
   }
   if (parsedStock === Number(currentStock)) {
     return { product: { id: productId, stock: parsedStock }, error: null };
@@ -103,9 +134,20 @@ export async function updateProductStock(productId, newStock, currentStock = 0) 
   try {
     const response = await apiRequest(`inventory/${productId}/adjust`, {
       method: "PATCH",
-      body: JSON.stringify({ change: parsedStock - Number(currentStock) }),
+      body: JSON.stringify({
+        change: parsedStock - Number(currentStock),
+        ...(variantId ? { variantId } : {}),
+      }),
     });
-    return { product: { ...response.data, id: response.data.productId }, error: null };
+    return {
+      product: {
+        ...response.data,
+        id: response.data.productId,
+        stock:
+          response.data.totalProductStock ?? response.data.stock ?? parsedStock,
+      },
+      error: null,
+    };
   } catch (error) {
     return { product: null, error };
   }

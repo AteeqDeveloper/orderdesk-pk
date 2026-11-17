@@ -1,6 +1,30 @@
 import mongoose from "mongoose";
 import Product from "../models/Product.js";
 
+const getInventoryProduct = (product) => {
+  const data =
+    typeof product.toObject === "function" ? product.toObject() : { ...product };
+  const variants = data.variants || [];
+
+  if (data.hasVariants && variants.length > 0) {
+    data.stock = variants.reduce((total, variant) => total + (variant.stock || 0), 0);
+  }
+
+  data.lowStockVariants = variants
+    .filter(
+      (variant) =>
+        variant.status === "active" &&
+        variant.stock <= variant.lowStockThreshold
+    )
+    .map((variant) => ({
+      ...variant,
+      variantName:
+        [variant.size, variant.color].filter(Boolean).join(" / ") || "Variant",
+    }));
+
+  return data;
+};
+
 // GET: All inventory
 export const getInventory = async (req, res) => {
   try {
@@ -11,7 +35,7 @@ export const getInventory = async (req, res) => {
     return res.status(200).json({
       success: true,
       count: products.length,
-      data: products,
+      data: products.map(getInventoryProduct),
     });
   } catch (error) {
     console.error("Get inventory error:", error.message);
@@ -57,7 +81,7 @@ export const getLowStockProducts = async (req, res) => {
     return res.status(200).json({
       success: true,
       count: products.length,
-      data: products,
+      data: products.map(getInventoryProduct),
     });
   } catch (error) {
     console.error("Low-stock error:", error.message);
@@ -213,7 +237,31 @@ export const getInventorySummary = async (req, res) => {
         $group: {
           _id: null,
           totalProducts: { $sum: 1 },
-          totalUnits: { $sum: "$stock" },
+          totalUnits: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$hasVariants", true] },
+                    {
+                      $gt: [
+                        { $size: { $ifNull: ["$variants", []] } },
+                        0,
+                      ],
+                    },
+                  ],
+                },
+                {
+                  $reduce: {
+                    input: { $ifNull: ["$variants", []] },
+                    initialValue: 0,
+                    in: { $add: ["$$value", "$$this.stock"] },
+                  },
+                },
+                "$stock",
+              ],
+            },
+          },
           lowStockCount: {
             $sum: {
               $cond: [
@@ -246,6 +294,22 @@ export const getInventorySummary = async (req, res) => {
               ],
             },
           },
+          lowStockVariantCount: {
+            $sum: {
+              $size: {
+                $filter: {
+                  input: { $ifNull: ["$variants", []] },
+                  as: "v",
+                  cond: {
+                    $and: [
+                      { $eq: ["$$v.status", "active"] },
+                      { $lte: ["$$v.stock", "$$v.lowStockThreshold"] },
+                    ],
+                  },
+                },
+              },
+            },
+          },
         },
       },
       {
@@ -254,6 +318,7 @@ export const getInventorySummary = async (req, res) => {
           totalProducts: 1,
           totalUnits: 1,
           lowStockCount: 1,
+          lowStockVariantCount: 1,
         },
       },
     ]);
@@ -264,6 +329,7 @@ export const getInventorySummary = async (req, res) => {
         totalProducts: 0,
         totalUnits: 0,
         lowStockCount: 0,
+        lowStockVariantCount: 0,
       },
     });
   } catch (error) {

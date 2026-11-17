@@ -47,6 +47,17 @@ export const createProduct = async (req, res) => {
       });
     }
 
+    if (
+      data.sku !== undefined &&
+      data.sku !== null &&
+      typeof data.sku !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Product SKU must be a string",
+      });
+    }
+
     const price = Number(data.price);
     if (!Number.isFinite(price) || price < 0) {
       return res.status(400).json({
@@ -278,6 +289,24 @@ export const updateProduct = async (req, res) => {
       });
     }
 
+    if (data.variants !== undefined && !Array.isArray(data.variants)) {
+      return res.status(400).json({
+        success: false,
+        message: "Variants must be an array",
+      });
+    }
+
+    if (
+      data.sku !== undefined &&
+      data.sku !== null &&
+      typeof data.sku !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Product SKU must be a string",
+      });
+    }
+
     if (data.price !== undefined) {
       const price = Number(data.price);
       if (!Number.isFinite(price) || price < 0) {
@@ -310,6 +339,24 @@ export const updateProduct = async (req, res) => {
 
     // Check SKU if updated
     if (data.sku && data.sku.trim()) {
+      const normalizedSku = data.sku.trim().toUpperCase();
+      const variantsToCheck = Array.isArray(data.variants)
+        ? data.variants
+        : currentProduct.variants;
+
+      if (
+        variantsToCheck.some(
+          (variant) =>
+            typeof variant?.sku === "string" &&
+            variant.sku.trim().toUpperCase() === normalizedSku
+        )
+      ) {
+        return res.status(409).json({
+          success: false,
+          message: "Product SKU cannot match one of its variant SKUs",
+        });
+      }
+
       const available = await isSkuAvailable(req.user._id, data.sku, {
         excludeProductId: req.params.id,
       });
@@ -328,7 +375,8 @@ export const updateProduct = async (req, res) => {
       const sanitizedVariants = [];
 
       for (let i = 0; i < data.variants.length; i++) {
-        const { sanitized, error } = sanitizeVariantData(data.variants[i], {
+        const rawVariant = data.variants[i];
+        const { sanitized, error } = sanitizeVariantData(rawVariant, {
           price: data.price ?? currentProduct.price,
           costPrice: data.costPrice ?? currentProduct.costPrice,
           lowStockThreshold: data.lowStockThreshold ?? currentProduct.lowStockThreshold,
@@ -339,6 +387,25 @@ export const updateProduct = async (req, res) => {
             success: false,
             message: `Variant ${i + 1}: ${error}`,
           });
+        }
+
+        const submittedVariantId = rawVariant?._id ?? rawVariant?.id;
+        if (submittedVariantId !== undefined) {
+          if (!mongoose.isValidObjectId(submittedVariantId)) {
+            return res.status(400).json({
+              success: false,
+              message: `Variant ${i + 1} has an invalid ID`,
+            });
+          }
+
+          const existingVariant = currentProduct.variants.id(submittedVariantId);
+          if (!existingVariant) {
+            return res.status(400).json({
+              success: false,
+              message: `Variant ${i + 1} does not belong to this product`,
+            });
+          }
+          sanitized._id = existingVariant._id;
         }
 
         if (sanitized.sku) {
@@ -357,10 +424,9 @@ export const updateProduct = async (req, res) => {
           }
           seenSkus.add(sanitized.sku);
 
-          const variantId = data.variants[i]._id || data.variants[i].id;
           const available = await isSkuAvailable(req.user._id, sanitized.sku, {
             excludeProductId: req.params.id,
-            excludeVariantId: variantId,
+            excludeVariantId: sanitized._id,
           });
 
           if (!available) {

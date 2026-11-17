@@ -25,6 +25,8 @@ async function proxyRequest(request, context) {
   const headers = new Headers();
   const contentType = request.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
+  const idempotencyKey = request.headers.get("idempotency-key");
+  if (idempotencyKey) headers.set("idempotency-key", idempotencyKey);
 
   const token = request.cookies.get(TOKEN_COOKIE)?.value;
   if (token) headers.set("authorization", `Bearer ${token}`);
@@ -52,6 +54,7 @@ async function proxyRequest(request, context) {
         revalidatePath("/dashboard/orders/[id]", "page");
         revalidatePath("/dashboard/customers");
         revalidatePath("/dashboard/customers/[id]", "page");
+        revalidatePath("/dashboard/inventory");
       } else if (
         ((request.method === "POST" || request.method === "PATCH" || request.method === "DELETE") &&
           /^products(\/.*)?$/.test(endpoint)) ||
