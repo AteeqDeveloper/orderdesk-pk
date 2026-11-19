@@ -9,6 +9,7 @@ import {
   Users,
   Boxes,
   BarChart3,
+  Bell,
   Settings,
   NotebookPen,
   X,
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/customers", label: "Customers", icon: Users },
   { href: "/dashboard/inventory", label: "Inventory", icon: Boxes },
   { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
+  { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

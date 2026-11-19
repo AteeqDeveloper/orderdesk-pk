@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import Customer from "../models/Customer.js";
+import Notification from "../models/Notification.js";
 import {
   createProduct,
   addVariant,
@@ -20,6 +21,10 @@ import {
 } from "../controllers/inventoryController.js";
 import { createOrder, updateOrder } from "../controllers/orderController.js";
 import { isSkuAvailable, sanitizeVariantData } from "../utils/skuValidator.js";
+
+Notification.findOneAndUpdate = async () => null;
+Notification.updateOne = async () => ({ modifiedCount: 0 });
+Notification.updateMany = async () => ({ modifiedCount: 0 });
 
 // Helper to create mock Express response
 function mockRes() {
@@ -503,7 +508,7 @@ test("8. Restoring variant stock on order cancellation and preventing duplicate 
   const originalStartSession = mongoose.startSession;
   const originalFindOneOrder = Order.findOne;
   const originalFindOneAndUpdateOrder = Order.findOneAndUpdate;
-  const originalUpdateOneProduct = Product.updateOne;
+  const originalFindOneAndUpdateProduct = Product.findOneAndUpdate;
 
   let stockRestored = false;
 
@@ -536,7 +541,7 @@ test("8. Restoring variant stock on order cancellation and preventing duplicate 
     orderStatus: "cancelled",
   });
 
-  Product.updateOne = async (filter, update) => {
+  Product.findOneAndUpdate = async (filter, update) => {
     assert.equal(filter._id.toString(), productId.toString());
     assert.equal(filter["variants._id"].toString(), variantId.toString());
     assert.deepEqual(update.$inc, {
@@ -544,7 +549,18 @@ test("8. Restoring variant stock on order cancellation and preventing duplicate 
       stock: 3,
     });
     stockRestored = true;
-    return { matchedCount: 1 };
+    const updatedVariant = {
+      _id: variantId,
+      size: "M",
+      color: "Blue",
+      stock: 8,
+      lowStockThreshold: 5,
+      status: "active",
+    };
+    return {
+      status: "active",
+      variants: { id: () => updatedVariant },
+    };
   };
 
   const req = {
@@ -560,7 +576,7 @@ test("8. Restoring variant stock on order cancellation and preventing duplicate 
     mongoose.startSession = originalStartSession;
     Order.findOne = originalFindOneOrder;
     Order.findOneAndUpdate = originalFindOneAndUpdateOrder;
-    Product.updateOne = originalUpdateOneProduct;
+    Product.findOneAndUpdate = originalFindOneAndUpdateProduct;
   }
 
   assert.equal(res.statusCode, 200);

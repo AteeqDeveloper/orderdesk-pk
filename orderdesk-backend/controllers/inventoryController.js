@@ -1,5 +1,10 @@
 import mongoose from "mongoose";
 import Product from "../models/Product.js";
+import {
+  safelyNotify,
+  syncStockAlert,
+  syncProductStockAlerts,
+} from "../utils/notificationService.js";
 
 const getInventoryProduct = (product) => {
   const data =
@@ -153,9 +158,37 @@ export const adjustStock = async (req, res) => {
         });
       }
 
+      const previousProduct = product.toObject();
+      const previousStock = variant.stock;
       variant.stock += change;
       product.stock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
       await product.save();
+      await safelyNotify(
+        () =>
+          syncStockAlert({
+            userId: req.user._id,
+            productId: product._id,
+            variantId: variant._id,
+            productName: product.name,
+            variantName:
+              [variant.size, variant.color].filter(Boolean).join(" / ") ||
+              "Variant",
+            before: {
+              stock: previousStock,
+              lowStockThreshold: variant.lowStockThreshold,
+              active:
+                previousProduct.status === "active" &&
+                variant.status === "active",
+            },
+            after: {
+              stock: variant.stock,
+              lowStockThreshold: variant.lowStockThreshold,
+              active:
+                product.status === "active" && variant.status === "active",
+            },
+          }),
+        "Manual variant stock"
+      );
 
       return res.status(200).json({
         success: true,
@@ -194,6 +227,7 @@ export const adjustStock = async (req, res) => {
       });
     }
 
+    const previousProduct = existingProduct.toObject();
     if (change < 0 && existingProduct.stock < Math.abs(change)) {
       return res.status(409).json({
         success: false,
@@ -203,6 +237,15 @@ export const adjustStock = async (req, res) => {
 
     existingProduct.stock += change;
     await existingProduct.save();
+    await safelyNotify(
+      () =>
+        syncProductStockAlerts(
+          req.user._id,
+          previousProduct,
+          existingProduct
+        ),
+      "Manual product stock"
+    );
 
     return res.status(200).json({
       success: true,

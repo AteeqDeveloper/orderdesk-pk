@@ -1,6 +1,11 @@
 import mongoose from "mongoose";
 import Product from "../models/Product.js";
 import { isSkuAvailable, sanitizeVariantData } from "../utils/skuValidator.js";
+import {
+  resolveProductStockAlerts,
+  safelyNotify,
+  syncProductStockAlerts,
+} from "../utils/notificationService.js";
 
 const getProductData = (body) => {
   const allowedFields = [
@@ -163,6 +168,11 @@ export const createProduct = async (req, res) => {
       ...data,
       userId: req.user._id,
     });
+
+    await safelyNotify(
+      () => syncProductStockAlerts(req.user._id, null, product),
+      "Initial product stock"
+    );
 
     return res.status(201).json({
       success: true,
@@ -461,6 +471,11 @@ export const updateProduct = async (req, res) => {
       }
     );
 
+    await safelyNotify(
+      () => syncProductStockAlerts(req.user._id, currentProduct, product),
+      "Product stock update"
+    );
+
     return res.status(200).json({
       success: true,
       message: "Product updated successfully",
@@ -511,6 +526,11 @@ export const deleteProduct = async (req, res) => {
         message: "Product not found",
       });
     }
+
+    await safelyNotify(
+      () => resolveProductStockAlerts(req.user._id, product._id),
+      "Deleted product stock"
+    );
 
     return res.status(200).json({
       success: true,
@@ -640,6 +660,7 @@ export const addVariant = async (req, res) => {
       });
     }
 
+    const previousProduct = product.toObject();
     const { sanitized, error } = sanitizeVariantData(req.body, {
       price: product.price,
       costPrice: product.costPrice,
@@ -688,6 +709,11 @@ export const addVariant = async (req, res) => {
     product.stock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
 
     await product.save();
+    await safelyNotify(
+      () =>
+        syncProductStockAlerts(req.user._id, previousProduct, product),
+      "Added variant stock"
+    );
 
     const createdVariant = product.variants[product.variants.length - 1];
 
@@ -745,6 +771,7 @@ export const updateVariant = async (req, res) => {
       });
     }
 
+    const previousProduct = product.toObject();
     const updates = req.body;
     if (!updates || typeof updates !== "object" || Object.keys(updates).length === 0) {
       return res.status(400).json({
@@ -857,6 +884,11 @@ export const updateVariant = async (req, res) => {
     product.stock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
 
     await product.save();
+    await safelyNotify(
+      () =>
+        syncProductStockAlerts(req.user._id, previousProduct, product),
+      "Updated variant stock"
+    );
 
     return res.status(200).json({
       success: true,
@@ -912,11 +944,17 @@ export const deleteVariant = async (req, res) => {
       });
     }
 
+    const previousProduct = product.toObject();
     product.variants.pull({ _id: variantId });
     product.hasVariants = product.variants.length > 0;
     product.stock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
 
     await product.save();
+    await safelyNotify(
+      () =>
+        syncProductStockAlerts(req.user._id, previousProduct, product),
+      "Deleted variant stock"
+    );
 
     return res.status(200).json({
       success: true,

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { LogOut, Menu } from "lucide-react";
 import { logoutUser } from "@/services/authService";
+import NotificationBell from "@/components/notifications/NotificationBell";
 
 export default function DashboardHeader({ user, profile, onMenuClick }) {
   const router = useRouter();
@@ -35,6 +36,7 @@ export default function DashboardHeader({ user, profile, onMenuClick }) {
 
         <div className="flex items-center gap-4">
           <span className="text-sm text-ink-600">{displayName}</span>
+          <NotificationBell />
           <button
             type="button"
             onClick={handleLogout}

@@ -8,6 +8,11 @@ import {
   ORDER_STATUS_TRANSITIONS,
   PAYMENT_STATUSES,
 } from "../utils/orderStatusRules.js";
+import {
+  notifyOrderStatusChange,
+  safelyNotify,
+  syncStockAlert,
+} from "../utils/notificationService.js";
 
 const validId = (id) => mongoose.isValidObjectId(id);
 
@@ -20,6 +25,7 @@ const validMoney = (value) =>
 export const createOrder = async (req, res) => {
   const userId = req.user._id;
   const decrementedProducts = [];
+  const stockAlertChanges = [];
   const idempotencyKey =
     req.get?.("Idempotency-Key") || req.headers?.["idempotency-key"];
   const idempotencyFingerprint = idempotencyKey
@@ -203,10 +209,38 @@ export const createOrder = async (req, res) => {
           throw new Error(`INSUFFICIENT_STOCK:${product.name} (${variantName})`);
         }
 
+        const updatedVariant = updatedProduct.variants?.id(variant._id);
+        if (!updatedVariant) {
+          throw new Error(`Could not read updated stock for variant ${variant._id}`);
+        }
+
         decrementedProducts.push({
           productId: product._id,
           variantId: variant._id,
           quantity,
+        });
+        stockAlertChanges.push({
+          userId,
+          productId: product._id,
+          variantId: variant._id,
+          productName: product.name,
+          variantName:
+            [variant.size, variant.color].filter(Boolean).join(" / ") ||
+            "Variant",
+          before: {
+            stock: updatedVariant.stock + quantity,
+            lowStockThreshold: updatedVariant.lowStockThreshold,
+            active:
+              updatedProduct.status === "active" &&
+              updatedVariant.status === "active",
+          },
+          after: {
+            stock: updatedVariant.stock,
+            lowStockThreshold: updatedVariant.lowStockThreshold,
+            active:
+              updatedProduct.status === "active" &&
+              updatedVariant.status === "active",
+          },
         });
 
         if (
@@ -267,6 +301,21 @@ export const createOrder = async (req, res) => {
           variantId: null,
           quantity,
         });
+        stockAlertChanges.push({
+          userId,
+          productId: product._id,
+          productName: product.name,
+          before: {
+            stock: updatedProduct.stock + quantity,
+            lowStockThreshold: updatedProduct.lowStockThreshold,
+            active: updatedProduct.status === "active",
+          },
+          after: {
+            stock: updatedProduct.stock,
+            lowStockThreshold: updatedProduct.lowStockThreshold,
+            active: updatedProduct.status === "active",
+          },
+        });
 
         const unitPrice = product.price;
         const lineTotal = unitPrice * quantity;
@@ -315,6 +364,15 @@ export const createOrder = async (req, res) => {
       paymentMethod,
       notes,
     });
+
+    await Promise.all(
+      stockAlertChanges.map((change) =>
+        safelyNotify(
+          () => syncStockAlert(change),
+          "Order stock"
+        )
+      )
+    );
 
     return res.status(201).json({
       success: true,
@@ -483,6 +541,7 @@ export const getOrderById = async (req, res) => {
 // UPDATE ORDER / PAYMENT STATUS
 export const updateOrder = async (req, res) => {
   let session;
+  let restoredStockAlerts = [];
 
   try {
     if (!validId(req.params.id)) {
@@ -566,6 +625,7 @@ export const updateOrder = async (req, res) => {
       let updateResult;
       session = await mongoose.startSession();
       await session.withTransaction(async () => {
+        restoredStockAlerts = [];
         const currentOrder = await Order.findOne(orderFilter).session(session);
         if (!currentOrder) {
           updateResult = {
@@ -604,9 +664,8 @@ export const updateOrder = async (req, res) => {
         }
 
         for (const item of order.items) {
-          let stockUpdate;
           if (item.variantId) {
-            stockUpdate = await Product.updateOne(
+            const updatedProduct = await Product.findOneAndUpdate(
               {
                 _id: item.productId,
                 userId: req.user._id,
@@ -618,37 +677,87 @@ export const updateOrder = async (req, res) => {
                   stock: item.quantity,
                 },
               },
-              { session }
+              { new: true, session }
             );
 
-            // If the specific variant was removed from the product, restore parent stock
-            if (stockUpdate.matchedCount === 0) {
-              stockUpdate = await Product.updateOne(
+            if (updatedProduct) {
+              const updatedVariant = updatedProduct.variants?.id(item.variantId);
+              if (!updatedVariant) {
+                throw new Error(
+                  `Could not read restored stock for variant ${item.variantId}`
+                );
+              }
+              restoredStockAlerts.push({
+                userId: req.user._id,
+                productId: item.productId,
+                variantId: item.variantId,
+                productName: item.name,
+                variantName:
+                  [item.size, item.color].filter(Boolean).join(" / ") ||
+                  "Variant",
+                before: {
+                  stock: updatedVariant.stock - item.quantity,
+                  lowStockThreshold: updatedVariant.lowStockThreshold,
+                  active:
+                    updatedProduct.status === "active" &&
+                    updatedVariant.status === "active",
+                },
+                after: {
+                  stock: updatedVariant.stock,
+                  lowStockThreshold: updatedVariant.lowStockThreshold,
+                  active:
+                    updatedProduct.status === "active" &&
+                    updatedVariant.status === "active",
+                },
+              });
+            } else {
+              const restoredParent = await Product.findOneAndUpdate(
                 {
                   _id: item.productId,
                   userId: req.user._id,
                 },
                 { $inc: { stock: item.quantity } },
-                { session }
+                { new: true, session }
               );
+              if (!restoredParent) {
+                throw new Error(`Could not restore stock for product ${item.productId}`);
+              }
             }
           } else {
-            stockUpdate = await Product.updateOne(
+            const restoredProduct = await Product.findOneAndUpdate(
               {
                 _id: item.productId,
                 userId: req.user._id,
               },
               { $inc: { stock: item.quantity } },
-              { session }
+              { new: true, session }
             );
-          }
-
-          if (stockUpdate.matchedCount !== 1) {
-            throw new Error(`Could not restore stock for product ${item.productId}`);
+            if (!restoredProduct) {
+              throw new Error(`Could not restore stock for product ${item.productId}`);
+            }
+            restoredStockAlerts.push({
+              userId: req.user._id,
+              productId: item.productId,
+              productName: item.name,
+              before: {
+                stock: restoredProduct.stock - item.quantity,
+                lowStockThreshold: restoredProduct.lowStockThreshold,
+                active: restoredProduct.status === "active",
+              },
+              after: {
+                stock: restoredProduct.stock,
+                lowStockThreshold: restoredProduct.lowStockThreshold,
+                active: restoredProduct.status === "active",
+              },
+            });
           }
         }
 
-        updateResult = { status: 200, order };
+        updateResult = {
+          status: 200,
+          order,
+          previousStatus: currentOrder.orderStatus,
+        };
       });
 
       if (updateResult.status !== 200) {
@@ -657,6 +766,25 @@ export const updateOrder = async (req, res) => {
           message: updateResult.message,
         });
       }
+
+      await Promise.all([
+        ...restoredStockAlerts.map((change) =>
+          safelyNotify(
+            () => syncStockAlert(change),
+            "Order cancellation stock"
+          )
+        ),
+        safelyNotify(
+          () =>
+            notifyOrderStatusChange({
+              userId: req.user._id,
+              orderId: updateResult.order._id,
+              previousStatus: updateResult.previousStatus,
+              orderStatus,
+            }),
+          "Order status"
+        ),
+      ]);
 
       return res.status(200).json({
         success: true,
@@ -709,6 +837,19 @@ export const updateOrder = async (req, res) => {
         success: false,
         message: "The order changed before it could be updated. Refresh and try again.",
       });
+    }
+
+    if (hasOrderStatus && currentOrder.orderStatus !== order.orderStatus) {
+      await safelyNotify(
+        () =>
+          notifyOrderStatusChange({
+            userId: req.user._id,
+            orderId: order._id,
+            previousStatus: currentOrder.orderStatus,
+            orderStatus: order.orderStatus,
+          }),
+        "Order status"
+      );
     }
 
     return res.status(200).json({
