@@ -1,51 +1,36 @@
 "use client";
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useTransition, useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarDays, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PRESETS = [
   { value: "today", label: "Today" },
-  { value: "7d", label: "Last 7 Days" },
-  { value: "30d", label: "Last 30 Days" },
-  { value: "3m", label: "Last 3 Months" },
-  { value: "all", label: "All Time" },
+  { value: "last7days", label: "Last 7 Days" },
+  { value: "last30days", label: "Last 30 Days" },
+  { value: "thisMonth", label: "This Month" },
   { value: "custom", label: "Custom Range" },
 ];
 
-export default function DateFilter() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
+export default function DateFilter({
+  period,
+  startDate,
+  endDate,
+  loading,
+  onPeriodChange,
+  onApplyCustom,
+}) {
+  const [localFrom, setLocalFrom] = useState(startDate);
+  const [localTo, setLocalTo] = useState(endDate);
 
-  const activePreset = searchParams.get("datePreset") || "30d";
-  const customFrom = searchParams.get("from") || "";
-  const customTo = searchParams.get("to") || "";
-  const [localFrom, setLocalFrom] = useState(customFrom);
-  const [localTo, setLocalTo] = useState(customTo);
-
-  function navigate(params) {
-    const p = new URLSearchParams(searchParams.toString());
-    Object.entries(params).forEach(([k, v]) => {
-      if (v) p.set(k, v);
-      else p.delete(k);
-    });
-    startTransition(() => router.push(`${pathname}?${p.toString()}`));
-  }
-
-  function selectPreset(preset) {
-    if (preset !== "custom") {
-      navigate({ datePreset: preset, from: "", to: "" });
-    } else {
-      navigate({ datePreset: "custom" });
-    }
-  }
+  useEffect(() => {
+    setLocalFrom(startDate);
+    setLocalTo(endDate);
+  }, [startDate, endDate]);
 
   function applyCustomRange() {
-    if (!localFrom || !localTo) return;
-    navigate({ datePreset: "custom", from: localFrom, to: localTo });
+    if (!localFrom || !localTo || localFrom > localTo) return;
+    onApplyCustom(localFrom, localTo);
   }
 
   return (
@@ -59,11 +44,11 @@ export default function DateFilter() {
             <button
               key={preset.value}
               type="button"
-              onClick={() => selectPreset(preset.value)}
-              disabled={isPending}
+              onClick={() => onPeriodChange(preset.value)}
+              disabled={loading}
               className={cn(
                 "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                activePreset === preset.value
+                period === preset.value
                   ? "bg-brand-700 text-white"
                   : "border border-ink-200 bg-white text-ink-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800"
               )}
@@ -73,18 +58,19 @@ export default function DateFilter() {
           ))}
         </div>
 
-        {isPending && (
+        {loading && (
           <Loader2 className="h-4 w-4 animate-spin text-ink-400" />
         )}
       </div>
 
       {/* Custom date pickers */}
-      {activePreset === "custom" && (
+      {period === "custom" && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-ink-500">From:</span>
           <input
             type="date"
             value={localFrom}
+            max={localTo || undefined}
             onChange={(e) => setLocalFrom(e.target.value)}
             className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs text-ink-900 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20"
           />
@@ -92,13 +78,14 @@ export default function DateFilter() {
           <input
             type="date"
             value={localTo}
+            min={localFrom || undefined}
             onChange={(e) => setLocalTo(e.target.value)}
             className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs text-ink-900 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20"
           />
           <button
             type="button"
             onClick={applyCustomRange}
-            disabled={!localFrom || !localTo || isPending}
+            disabled={!localFrom || !localTo || localFrom > localTo || loading}
             className="rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-800 disabled:opacity-50"
           >
             Apply
