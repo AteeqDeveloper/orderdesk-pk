@@ -10,6 +10,7 @@ import inventoryRoutes from "./routes/inventoryRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import activityLogRoutes from "./routes/activityLogRoutes.js";
+import dataManagementRoutes from "./routes/dataManagementRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 
 //initialize express app
@@ -27,6 +28,7 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/activity-logs", activityLogRoutes);
+app.use("/api/data-management", dataManagementRoutes);
 app.use("/api/uploads", uploadRoutes);
 
 

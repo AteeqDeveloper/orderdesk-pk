@@ -1,5 +1,6 @@
 import { Settings, Store, Mail, User, ShieldCheck } from "lucide-react";
 import { getServerUser } from "@/lib/serverApi";
+import DataManagement from "@/components/settings/DataManagement";
 
 export const metadata = {
   title: "Settings — OrderDesk PK",
@@ -102,6 +103,8 @@ export default async function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <DataManagement />
     </div>
   );
 }

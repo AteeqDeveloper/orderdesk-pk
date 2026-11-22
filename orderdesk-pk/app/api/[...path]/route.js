@@ -3,6 +3,33 @@ import { revalidatePath } from "next/cache";
 
 const TOKEN_COOKIE = "orderdesk_token";
 const TOKEN_MAX_AGE = 60 * 60 * 24;
+const MAX_BACKUP_UPLOAD_BYTES = 10 * 1024 * 1024 + 64 * 1024;
+
+async function readLimitedBody(request, maxBytes) {
+  const reader = request.body?.getReader();
+  if (!reader) return new ArrayBuffer(0);
+
+  const chunks = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body.buffer;
+}
 
 async function proxyRequest(request, context) {
   const { path = [] } = await context.params;
@@ -32,18 +59,40 @@ async function proxyRequest(request, context) {
   if (token) headers.set("authorization", `Bearer ${token}`);
 
   const query = new URL(request.url).search;
-  const body = ["GET", "HEAD"].includes(request.method)
-    ? undefined
-    : await request.arrayBuffer();
 
   try {
+    let body;
+    if (!["GET", "HEAD"].includes(request.method)) {
+      const isBackupUpload =
+        request.method === "POST" &&
+        /^data-management\/backup\/(validate|restore)$/.test(endpoint);
+      if (isBackupUpload) {
+        const contentLength = Number(request.headers.get("content-length"));
+        if (Number.isFinite(contentLength) && contentLength > MAX_BACKUP_UPLOAD_BYTES) {
+          return NextResponse.json(
+            { success: false, message: "Backup files must be 10 MB or smaller." },
+            { status: 413 }
+          );
+        }
+        body = await readLimitedBody(request, MAX_BACKUP_UPLOAD_BYTES);
+        if (body === null) {
+          return NextResponse.json(
+            { success: false, message: "Backup files must be 10 MB or smaller." },
+            { status: 413 }
+          );
+        }
+      } else {
+        body = await request.arrayBuffer();
+      }
+    }
     const upstream = await fetch(`${apiUrl}/api/${endpoint}${query}`, {
       method: request.method,
       headers,
       body,
       cache: "no-store",
     });
-    const payload = await upstream.text();
+    const isLogin = endpoint === "auth/login" && request.method === "POST";
+    const payload = isLogin ? await upstream.text() : null;
     if (upstream.ok) {
       if (
         (request.method === "POST" && endpoint === "orders") ||
@@ -71,13 +120,17 @@ async function proxyRequest(request, context) {
     if (upstreamContentType) {
       responseHeaders.set("content-type", upstreamContentType);
     }
+    const contentDisposition = upstream.headers.get("content-disposition");
+    if (contentDisposition) {
+      responseHeaders.set("content-disposition", contentDisposition);
+    }
 
-    let response = new NextResponse(payload, {
+    let response = new NextResponse(isLogin ? payload : upstream.body, {
       status: upstream.status,
       headers: responseHeaders,
     });
 
-    if (endpoint === "auth/login" && upstream.ok) {
+    if (isLogin && upstream.ok) {
       const data = JSON.parse(payload);
       if (data.token) {
         const tokenValue = data.token;
