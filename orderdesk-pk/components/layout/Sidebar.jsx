@@ -12,6 +12,7 @@ import {
   Bell,
   Settings,
   NotebookPen,
+  History,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/inventory", label: "Inventory", icon: Boxes },
   { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
+  { href: "/dashboard/activity-logs", label: "Activity logs", icon: History },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

@@ -6,6 +6,7 @@ import {
   safelyNotify,
   syncProductStockAlerts,
 } from "../utils/notificationService.js";
+import { recordActivity } from "../utils/activityLog.js";
 
 const getProductData = (body) => {
   const allowedFields = [
@@ -173,6 +174,30 @@ export const createProduct = async (req, res) => {
       () => syncProductStockAlerts(req.user._id, null, product),
       "Initial product stock"
     );
+    await recordActivity({
+      userId: req.user._id,
+      action: "product_created",
+      entityType: "product",
+      entityId: product._id,
+      description: `Product created: ${product.name}`,
+      metadata: { entityName: product.name },
+    });
+    for (const variant of product.variants) {
+      await recordActivity({
+        userId: req.user._id,
+        action: "variant_created",
+        entityType: "variant",
+        entityId: variant._id,
+        description: `Variant created for ${product.name}`,
+        metadata: {
+          entityName: product.name,
+          productId: product._id,
+          variantName:
+            [variant.size, variant.color].filter(Boolean).join(" / ") ||
+            "Variant",
+        },
+      });
+    }
 
     return res.status(201).json({
       success: true,
@@ -470,11 +495,61 @@ export const updateProduct = async (req, res) => {
         runValidators: true,
       }
     );
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
 
     await safelyNotify(
       () => syncProductStockAlerts(req.user._id, currentProduct, product),
       "Product stock update"
     );
+    await recordActivity({
+      userId: req.user._id,
+      action: "product_updated",
+      entityType: "product",
+      entityId: product._id,
+      description: `Product updated: ${product.name}`,
+      metadata: { entityName: product.name },
+    });
+    if (
+      !currentProduct.hasVariants &&
+      currentProduct.stock !== product.stock
+    ) {
+      const change = product.stock - currentProduct.stock;
+      await recordActivity({
+        userId: req.user._id,
+        action: change > 0 ? "stock_increased" : "stock_decreased",
+        entityType: "inventory",
+        entityId: product._id,
+        description: `Stock ${change > 0 ? "increased" : "decreased"} for ${product.name}`,
+        metadata: {
+          entityName: product.name,
+          previousStock: currentProduct.stock,
+          stock: product.stock,
+          change,
+        },
+      });
+    }
+    if (
+      data.lowStockThreshold !== undefined &&
+      currentProduct.lowStockThreshold !== product.lowStockThreshold
+    ) {
+      await recordActivity({
+        userId: req.user._id,
+        action: "low_stock_threshold_updated",
+        entityType: "inventory",
+        entityId: product._id,
+        description: `Low-stock threshold updated for ${product.name}`,
+        metadata: {
+          entityName: product.name,
+          previousThreshold: currentProduct.lowStockThreshold,
+          threshold: product.lowStockThreshold,
+        },
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -531,6 +606,14 @@ export const deleteProduct = async (req, res) => {
       () => resolveProductStockAlerts(req.user._id, product._id),
       "Deleted product stock"
     );
+    await recordActivity({
+      userId: req.user._id,
+      action: "product_deleted",
+      entityType: "product",
+      entityId: product._id,
+      description: `Product deleted: ${product.name}`,
+      metadata: { entityName: product.name },
+    });
 
     return res.status(200).json({
       success: true,
@@ -716,6 +799,20 @@ export const addVariant = async (req, res) => {
     );
 
     const createdVariant = product.variants[product.variants.length - 1];
+    await recordActivity({
+      userId: req.user._id,
+      action: "variant_created",
+      entityType: "variant",
+      entityId: createdVariant._id,
+      description: `Variant created for ${product.name}`,
+      metadata: {
+        entityName: product.name,
+        productId: product._id,
+        variantName:
+          [createdVariant.size, createdVariant.color].filter(Boolean).join(" / ") ||
+          "Variant",
+      },
+    });
 
     return res.status(201).json({
       success: true,
@@ -772,6 +869,7 @@ export const updateVariant = async (req, res) => {
     }
 
     const previousProduct = product.toObject();
+    const previousVariant = variant.toObject();
     const updates = req.body;
     if (!updates || typeof updates !== "object" || Object.keys(updates).length === 0) {
       return res.status(400).json({
@@ -889,6 +987,54 @@ export const updateVariant = async (req, res) => {
         syncProductStockAlerts(req.user._id, previousProduct, product),
       "Updated variant stock"
     );
+    await recordActivity({
+      userId: req.user._id,
+      action: "variant_updated",
+      entityType: "variant",
+      entityId: variant._id,
+      description: `Variant updated for ${product.name}`,
+      metadata: {
+        entityName: product.name,
+        productId: product._id,
+        variantName:
+          [variant.size, variant.color].filter(Boolean).join(" / ") || "Variant",
+      },
+    });
+    if (previousVariant.stock !== variant.stock) {
+      const change = variant.stock - previousVariant.stock;
+      await recordActivity({
+        userId: req.user._id,
+        action: change > 0 ? "stock_increased" : "stock_decreased",
+        entityType: "inventory",
+        entityId: product._id,
+        description: `Stock ${change > 0 ? "increased" : "decreased"} for ${product.name}`,
+        metadata: {
+          entityName: product.name,
+          variantId: variant._id,
+          previousStock: previousVariant.stock,
+          stock: variant.stock,
+          change,
+        },
+      });
+    }
+    if (previousVariant.lowStockThreshold !== variant.lowStockThreshold) {
+      await recordActivity({
+        userId: req.user._id,
+        action: "low_stock_threshold_updated",
+        entityType: "inventory",
+        entityId: product._id,
+        description: `Low-stock threshold updated for ${product.name}`,
+        metadata: {
+          entityName: product.name,
+          variantName:
+            [variant.size, variant.color].filter(Boolean).join(" / ") ||
+            "Variant",
+          previousThreshold: previousVariant.lowStockThreshold,
+          threshold: variant.lowStockThreshold,
+          variantId: variant._id,
+        },
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -955,6 +1101,19 @@ export const deleteVariant = async (req, res) => {
         syncProductStockAlerts(req.user._id, previousProduct, product),
       "Deleted variant stock"
     );
+    await recordActivity({
+      userId: req.user._id,
+      action: "variant_deleted",
+      entityType: "variant",
+      entityId: variant._id,
+      description: `Variant deleted from ${product.name}`,
+      metadata: {
+        entityName: product.name,
+        productId: product._id,
+        variantName:
+          [variant.size, variant.color].filter(Boolean).join(" / ") || "Variant",
+      },
+    });
 
     return res.status(200).json({
       success: true,

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Customer from "../models/Customer.js";
 import Order from "../models/Order.js";
 import { getCustomerStatsPipeline } from "../utils/customerStats.js";
+import { recordActivity } from "../utils/activityLog.js";
 
 const allowedFields = [
   "name",
@@ -44,6 +45,13 @@ export const createCustomer = async (req, res) => {
     const customer = await Customer.create({
       ...data,
       userId: req.user._id,
+    });
+    await recordActivity({
+      userId: req.user._id,
+      action: "customer_created",
+      entityType: "customer",
+      entityId: customer._id,
+      description: "Customer record created",
     });
 
     return res.status(201).json({
@@ -198,6 +206,14 @@ export const updateCustomer = async (req, res) => {
       });
     }
 
+    await recordActivity({
+      userId: req.user._id,
+      action: "customer_updated",
+      entityType: "customer",
+      entityId: customer._id,
+      description: "Customer record updated",
+    });
+
     return res.status(200).json({
       success: true,
       message: "Customer updated successfully",
@@ -241,6 +257,14 @@ export const deleteCustomer = async (req, res) => {
         message: "Customer not found",
       });
     }
+
+    await recordActivity({
+      userId: req.user._id,
+      action: "customer_deleted",
+      entityType: "customer",
+      entityId: customer._id,
+      description: "Customer record deleted",
+    });
 
     return res.status(200).json({
       success: true,

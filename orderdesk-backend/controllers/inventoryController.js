@@ -5,6 +5,7 @@ import {
   syncStockAlert,
   syncProductStockAlerts,
 } from "../utils/notificationService.js";
+import { recordActivity } from "../utils/activityLog.js";
 
 const getInventoryProduct = (product) => {
   const data =
@@ -189,6 +190,23 @@ export const adjustStock = async (req, res) => {
           }),
         "Manual variant stock"
       );
+      await recordActivity({
+        userId: req.user._id,
+        action: change > 0 ? "stock_increased" : "stock_decreased",
+        entityType: "inventory",
+        entityId: product._id,
+        description: `Stock ${change > 0 ? "increased" : "decreased"} for ${product.name}`,
+        metadata: {
+          entityName: product.name,
+          variantName:
+            [variant.size, variant.color].filter(Boolean).join(" / ") ||
+            "Variant",
+          variantId: variant._id,
+          previousStock,
+          stock: variant.stock,
+          change,
+        },
+      });
 
       return res.status(200).json({
         success: true,
@@ -246,6 +264,19 @@ export const adjustStock = async (req, res) => {
         ),
       "Manual product stock"
     );
+    await recordActivity({
+      userId: req.user._id,
+      action: change > 0 ? "stock_increased" : "stock_decreased",
+      entityType: "inventory",
+      entityId: existingProduct._id,
+      description: `Stock ${change > 0 ? "increased" : "decreased"} for ${existingProduct.name}`,
+      metadata: {
+        entityName: existingProduct.name,
+        previousStock: previousProduct.stock,
+        stock: existingProduct.stock,
+        change,
+      },
+    });
 
     return res.status(200).json({
       success: true,

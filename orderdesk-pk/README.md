@@ -44,6 +44,11 @@ Open `http://localhost:3000`.
 
 The frontend stores the backend JWT in an HttpOnly, SameSite=Lax cookie and proxies authenticated requests through its same-origin `/api` route. The current backend uses stateless JWTs; logout clears the browser session cookie.
 
-## Backend capability notes
+## Activity log API
 
-The API supports product and customer CRUD, order creation/read/status updates, inventory reads/stock adjustments, and dashboard statistics. Reports are derived from those API responses. The backend does not currently provide password reset, order deletion, product variants, or file uploads. Product image URLs remain supported.
+The authenticated Express API records successful product, customer, order, inventory, variant, and notification changes. Audit entries are written by the backend; there are no public create, update, or delete endpoints for activity logs.
+
+- `GET /api/activity-logs?page=1&limit=20` — newest-first list, with `total` and `pages` pagination values.
+- `GET /api/activity-logs/:id` — fetch one entry belonging to the authenticated user.
+
+The list endpoint returns `data.logs` and `data.pagination` (`page`, `limit`, `total`, `pages`), and supports `action`, `entityType`, `search`, `startDate`, and `endDate` filters. Date-only boundaries are interpreted in UTC, including the full end date. Supported entity types are `product`, `customer`, `order`, `inventory`, `variant`, and `notification`. All endpoints require the existing authenticated API session.

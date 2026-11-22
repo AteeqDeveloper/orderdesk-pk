@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Notification from "../models/Notification.js";
+import { recordActivity } from "../utils/activityLog.js";
 
 const notificationFields =
   "title message type relatedId relatedType relatedProductId isRead createdAt updatedAt";
@@ -89,6 +90,14 @@ export const markNotificationRead = async (req, res) => {
       });
     }
 
+    await recordActivity({
+      userId: req.user._id,
+      action: "notification_read",
+      entityType: "notification",
+      entityId: notification._id,
+      description: "Notification marked as read",
+    });
+
     return res.status(200).json({ success: true, data: { notification } });
   } catch (error) {
     console.error("Mark notification read error:", error.message);
@@ -105,6 +114,15 @@ export const markAllNotificationsRead = async (req, res) => {
       { userId: req.user._id, isRead: false },
       { $set: { isRead: true } }
     );
+    if (result.modifiedCount > 0) {
+      await recordActivity({
+        userId: req.user._id,
+        action: "notification_read",
+        entityType: "notification",
+        description: "Notifications marked as read",
+        metadata: { count: result.modifiedCount },
+      });
+    }
     return res.status(200).json({
       success: true,
       data: { modifiedCount: result.modifiedCount },
@@ -138,6 +156,14 @@ export const deleteNotification = async (req, res) => {
         message: "Notification not found",
       });
     }
+
+    await recordActivity({
+      userId: req.user._id,
+      action: "notification_deleted",
+      entityType: "notification",
+      entityId: notification._id,
+      description: "Notification deleted",
+    });
 
     return res.status(200).json({
       success: true,

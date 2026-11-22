@@ -5,6 +5,7 @@ import StatCard from "@/components/dashboard/StatCard";
 import SalesOverview from "@/components/dashboard/SalesOverview";
 import OrderStatusSummary from "@/components/dashboard/OrderStatusSummary";
 import RecentOrders from "@/components/dashboard/RecentOrders";
+import RecentActivity from "@/components/dashboard/RecentActivity";
 import QuickActions from "@/components/dashboard/QuickActions";
 import { formatPKR } from "@/lib/utils";
 
@@ -13,7 +14,7 @@ export const metadata = {
 };
 
 export default async function DashboardPage() {
-  const { stats, recent, statusSummary, salesOverview, error } =
+  const { stats, recent, recentActivities, statusSummary, salesOverview, error } =
     await getDashboardData(serverApiRequest);
 
   return (
@@ -52,6 +53,11 @@ export default async function DashboardPage() {
           <SalesOverview days={salesOverview.days} />
           <RecentOrders orders={recent.orders} />
         </div>
+
+        <RecentActivity
+          logs={recentActivities.logs}
+          error={recentActivities.error}
+        />
 
         <div className="space-y-6">
           <QuickActions />

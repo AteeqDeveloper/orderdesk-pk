@@ -3,12 +3,22 @@ import { mapOrder } from "@/services/orderService";
 
 export async function getDashboardData(request, days = 7) {
   try {
-    const [dashboardResponse, ordersResponse, customersResponse, inventoryResponse] =
+    const [
+      dashboardResponse,
+      ordersResponse,
+      customersResponse,
+      inventoryResponse,
+      activityResponse,
+    ] =
       await Promise.all([
         request("dashboard"),
         request("orders"),
         request("customers"),
         request("inventory/summary"),
+        request("activity-logs?limit=5").then(
+          (response) => ({ response, error: null }),
+          (error) => ({ response: null, error })
+        ),
       ]);
     const dashboard = dashboardResponse.data || {};
     const orders = (ordersResponse.orders || []).map(mapOrder);
@@ -38,6 +48,10 @@ export async function getDashboardData(request, days = 7) {
         lowStockCount: inventoryResponse.data?.lowStockCount ?? 0,
       },
       recent: { orders: orders.slice(0, 5) },
+      recentActivities: {
+        logs: activityResponse.response?.data?.logs || [],
+        error: activityResponse.error,
+      },
       statusSummary: { counts },
       salesOverview: { days: salesDays },
       error: null,
@@ -46,6 +60,7 @@ export async function getDashboardData(request, days = 7) {
     return {
       stats: { totalOrders: 0, totalSales: 0, totalCustomers: 0, lowStockCount: 0 },
       recent: { orders: [] },
+      recentActivities: { logs: [], error: null },
       statusSummary: { counts: Object.fromEntries(ORDER_STATUSES.map((status) => [status, 0])) },
       salesOverview: { days: [] },
       error,

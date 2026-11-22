@@ -5,6 +5,7 @@ import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import Customer from "../models/Customer.js";
 import Notification from "../models/Notification.js";
+import ActivityLog from "../models/ActivityLog.js";
 import {
   createProduct,
   addVariant,
@@ -50,6 +51,8 @@ test("1. Creating a product with variants computes total stock and sets hasVaria
   const originalCreate = Product.create;
   const originalFindOne = Product.findOne;
   const originalFind = Product.find;
+  const originalActivityCreate = ActivityLog.create;
+  const activities = [];
 
   let createdDoc = null;
   Product.findOne = () => ({
@@ -61,6 +64,10 @@ test("1. Creating a product with variants computes total stock and sets hasVaria
   Product.create = async (doc) => {
     createdDoc = doc;
     return { ...doc, _id: new mongoose.Types.ObjectId() };
+  };
+  ActivityLog.create = async (activity) => {
+    activities.push(activity);
+    return activity;
   };
 
   const req = {
@@ -84,6 +91,7 @@ test("1. Creating a product with variants computes total stock and sets hasVaria
     Product.create = originalCreate;
     Product.findOne = originalFindOne;
     Product.find = originalFind;
+    ActivityLog.create = originalActivityCreate;
   }
 
   assert.equal(res.statusCode, 201);
@@ -91,6 +99,15 @@ test("1. Creating a product with variants computes total stock and sets hasVaria
   assert.equal(createdDoc.stock, 30); // 10 + 15 + 5
   assert.equal(createdDoc.variants.length, 3);
   assert.equal(createdDoc.variants[0].sku, "LAWN-001-S");
+  assert.deepEqual(
+    activities.map((activity) => activity.action),
+    [
+      "product_created",
+      "variant_created",
+      "variant_created",
+      "variant_created",
+    ]
+  );
 });
 
 // -----------------------------------------------------------------------------
@@ -399,6 +416,8 @@ test("6 & 7. Creating an order using a variant deducts variant stock and capture
   const originalFindOneProduct = Product.findOne;
   const originalFindOneAndUpdateProduct = Product.findOneAndUpdate;
   const originalCreateOrder = Order.create;
+  const originalActivityCreate = ActivityLog.create;
+  const activities = [];
 
   Customer.findOne = async () => ({
     _id: customerId,
@@ -455,6 +474,10 @@ test("6 & 7. Creating an order using a variant deducts variant stock and capture
     createdOrderDoc = doc;
     return doc;
   };
+  ActivityLog.create = async (activity) => {
+    activities.push(activity);
+    return activity;
+  };
 
   const req = {
     user: { _id: userId },
@@ -479,6 +502,7 @@ test("6 & 7. Creating an order using a variant deducts variant stock and capture
     Product.findOne = originalFindOneProduct;
     Product.findOneAndUpdate = originalFindOneAndUpdateProduct;
     Order.create = originalCreateOrder;
+    ActivityLog.create = originalActivityCreate;
   }
 
   assert.equal(res.statusCode, 201);
@@ -488,6 +512,10 @@ test("6 & 7. Creating an order using a variant deducts variant stock and capture
   const orderItem = createdOrderDoc.items[0];
   assert.equal(orderItem.productId.toString(), productId.toString());
   assert.equal(orderItem.variantId.toString(), variantId.toString());
+  assert.deepEqual(
+    activities.map((activity) => activity.action),
+    ["order_created", "stock_decreased"]
+  );
   assert.equal(orderItem.name, "Embroidered Velvet - M / Emerald Green");
   assert.equal(orderItem.size, "M");
   assert.equal(orderItem.color, "Emerald Green");
@@ -509,6 +537,12 @@ test("8. Restoring variant stock on order cancellation and preventing duplicate 
   const originalFindOneOrder = Order.findOne;
   const originalFindOneAndUpdateOrder = Order.findOneAndUpdate;
   const originalFindOneAndUpdateProduct = Product.findOneAndUpdate;
+  const originalActivityCreate = ActivityLog.create;
+  const activities = [];
+  ActivityLog.create = async (activity) => {
+    activities.push(activity);
+    return activity;
+  };
 
   let stockRestored = false;
 
@@ -527,6 +561,7 @@ test("8. Restoring variant stock on order cancellation and preventing duplicate 
       {
         productId,
         variantId,
+        name: "Velvet - M / Blue",
         quantity: 3,
       },
     ],
@@ -577,11 +612,16 @@ test("8. Restoring variant stock on order cancellation and preventing duplicate 
     Order.findOne = originalFindOneOrder;
     Order.findOneAndUpdate = originalFindOneAndUpdateOrder;
     Product.findOneAndUpdate = originalFindOneAndUpdateProduct;
+    ActivityLog.create = originalActivityCreate;
   }
 
   assert.equal(res.statusCode, 200);
   assert.equal(stockRestored, true);
   assert.match(res.body.message, /cancelled and stock restored/);
+  assert.deepEqual(
+    activities.map((activity) => activity.action),
+    ["order_cancelled", "stock_increased"]
+  );
 });
 
 // -----------------------------------------------------------------------------

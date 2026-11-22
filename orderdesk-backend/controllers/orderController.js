@@ -13,6 +13,7 @@ import {
   safelyNotify,
   syncStockAlert,
 } from "../utils/notificationService.js";
+import { recordActivity } from "../utils/activityLog.js";
 
 const validId = (id) => mongoose.isValidObjectId(id);
 
@@ -373,6 +374,33 @@ export const createOrder = async (req, res) => {
         )
       )
     );
+    await recordActivity({
+      userId,
+      action: "order_created",
+      entityType: "order",
+      entityId: order._id,
+      description: "Order created",
+      metadata: {
+        orderStatus: order.orderStatus,
+        paymentStatus: order.paymentStatus,
+        totalAmount: order.totalAmount,
+      },
+    });
+    for (const item of order.items) {
+      await recordActivity({
+        userId,
+        action: "stock_decreased",
+        entityType: "inventory",
+        entityId: item.productId,
+        description: `Stock decreased for ${item.name} due to order`,
+        metadata: {
+          entityName: item.name,
+          orderId: order._id,
+          variantId: item.variantId,
+          change: -item.quantity,
+        },
+      });
+    }
 
     return res.status(201).json({
       success: true,
@@ -785,6 +813,33 @@ export const updateOrder = async (req, res) => {
           "Order status"
         ),
       ]);
+      await recordActivity({
+        userId: req.user._id,
+        action: "order_cancelled",
+        entityType: "order",
+        entityId: updateResult.order._id,
+        description: "Order cancelled",
+        metadata: {
+          previousStatus: updateResult.previousStatus,
+          orderStatus: updateResult.order.orderStatus,
+          paymentStatus: updateResult.order.paymentStatus,
+        },
+      });
+      for (const item of updateResult.order.items) {
+        await recordActivity({
+          userId: req.user._id,
+          action: "stock_increased",
+          entityType: "inventory",
+          entityId: item.productId,
+          description: `Stock restored for ${item.name} after order cancellation`,
+          metadata: {
+            entityName: item.name,
+            orderId: updateResult.order._id,
+            variantId: item.variantId,
+            change: item.quantity,
+          },
+        });
+      }
 
       return res.status(200).json({
         success: true,
@@ -850,6 +905,34 @@ export const updateOrder = async (req, res) => {
           }),
         "Order status"
       );
+      await recordActivity({
+        userId: req.user._id,
+        action: "order_status_changed",
+        entityType: "order",
+        entityId: order._id,
+        description: "Order status changed",
+        metadata: {
+          previousStatus: currentOrder.orderStatus,
+          orderStatus: order.orderStatus,
+          paymentStatus: order.paymentStatus,
+        },
+      });
+    } else if (
+      hasPaymentStatus &&
+      currentOrder.paymentStatus !== order.paymentStatus
+    ) {
+      await recordActivity({
+        userId: req.user._id,
+        action: "payment_status_changed",
+        entityType: "order",
+        entityId: order._id,
+        description: "Payment status changed",
+        metadata: {
+          previousStatus: currentOrder.paymentStatus,
+          paymentStatus: order.paymentStatus,
+          orderStatus: order.orderStatus,
+        },
+      });
     }
 
     return res.status(200).json({
