@@ -1,7 +1,14 @@
 import "./config/loadEnv.js";
 import express from "express";
 import cors from "cors";
+import {
+  createCorsOptions,
+  createCorsOriginGuard,
+  getTrustedFrontendOrigins,
+} from "./config/corsConfig.js";
 import connectDB from "./config/db.js";
+import LoginRateLimit from "./models/LoginRateLimit.js";
+import { parseTrustedProxyHops, validateJwtSecret } from "./config/securityConfig.js";
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
@@ -14,6 +21,7 @@ import dataManagementRoutes from "./routes/dataManagementRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 import superAdminRoutes from "./routes/superAdminRoutes.js";
+import { initializeAuthSecurity } from "./controllers/authcontroller.js";
 import {
   ensureDefaultSubscriptionPlans,
   expireSubscriptions,
@@ -21,10 +29,25 @@ import {
 
 //initialize express app
 const app = express();
+let startupConfigurationError;
+let trustedFrontendOrigins = [];
+let trustedProxyHops = 0;
+try {
+  trustedFrontendOrigins = getTrustedFrontendOrigins();
+} catch (error) {
+  startupConfigurationError = error;
+}
+try {
+  trustedProxyHops = parseTrustedProxyHops(process.env.TRUST_PROXY_HOPS);
+} catch (error) {
+  startupConfigurationError ||= error;
+}
+app.set("trust proxy", trustedProxyHops);
 
 
 // Middleware
-app.use(cors());
+app.use(createCorsOriginGuard(trustedFrontendOrigins));
+app.use(cors(createCorsOptions(trustedFrontendOrigins)));
 app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
@@ -47,6 +70,15 @@ app.get("/", (req, res) => {
   });
 });
 
+app.use((error, _req, res, next) => {
+  if (res.headersSent) return next(error);
+  console.error("Request middleware failed:", error?.name || "UnknownError");
+  return res.status(500).json({
+    success: false,
+    message: "Internal server error.",
+  });
+});
+
 const PORT = process.env.PORT || 5000;
 const cloudinaryEnvVariables = [
   "CLOUDINARY_CLOUD_NAME",
@@ -56,6 +88,10 @@ const cloudinaryEnvVariables = [
 
 const startServer = async () => {
   try {
+    validateJwtSecret(process.env.JWT_SECRET);
+    if (startupConfigurationError) throw startupConfigurationError;
+    await initializeAuthSecurity();
+
     const missingCloudinaryVariables = cloudinaryEnvVariables.filter((name) => {
       const val = process.env[name]?.trim();
       return (
@@ -75,6 +111,7 @@ const startServer = async () => {
     }
 
     await connectDB();
+    await LoginRateLimit.init();
     await ensureDefaultSubscriptionPlans();
     await expireSubscriptions();
 
@@ -89,7 +126,12 @@ const startServer = async () => {
       console.log(`Server running on port ${PORT}`);
     });
   } catch (error) {
-    console.error("Failed to start server:", error.message);
+    const message = /^(JWT_SECRET|FRONTEND_ORIGINS|TRUST_PROXY_HOPS)/.test(
+      error.message || ""
+    )
+      ? error.message
+      : "Startup failed. Check backend configuration; sensitive details were omitted.";
+    console.error("Failed to start server:", message);
     process.exit(1);
   }
 };

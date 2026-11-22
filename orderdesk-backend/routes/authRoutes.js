@@ -10,12 +10,21 @@ import {
 
 import authMiddleware from "../middleware/authMiddleware.js";
 import superAdminMiddleware from "../middleware/superAdminMiddleware.js";
+import {
+    accountLoginLimiter,
+    ipLoginLimiter,
+} from "../middleware/loginRateLimiter.js";
 
 const router = express.Router();
 
 router.post("/register", registerUser);
-router.post("/login", loginUser);
-router.post("/super-admin/login", superAdminLogin);
+router.post("/login", ipLoginLimiter, accountLoginLimiter, loginUser);
+router.post(
+    "/super-admin/login",
+    ipLoginLimiter,
+    accountLoginLimiter,
+    superAdminLogin
+);
 router.post(
     "/super-admin/logout",
     authMiddleware,

@@ -14,6 +14,10 @@ import { promoteExistingSuperAdmin } from "../scripts/promoteSuperAdmin.js";
 import authRoutes from "../routes/authRoutes.js";
 import superAdminRoutes from "../routes/superAdminRoutes.js";
 import superAdminMiddleware from "../middleware/superAdminMiddleware.js";
+import {
+  accountLoginLimiter,
+  ipLoginLimiter,
+} from "../middleware/loginRateLimiter.js";
 
 test("Super Admin APIs are protected by authentication and role middleware", () => {
   const protection = superAdminRoutes.stack.find((layer) => !layer.route);
@@ -79,7 +83,10 @@ test("Super Admin sign-in and logout use separate protected auth routes", () => 
   );
   assert.ok(login);
   assert.ok(logout);
-  assert.equal(login.route.stack.length, 1);
+  assert.equal(login.route.stack.length, 3);
+  assert.equal(login.route.stack[0].handle, ipLoginLimiter);
+  assert.equal(login.route.stack[1].handle, accountLoginLimiter);
+  assert.equal(login.route.stack[2].name, "superAdminLogin");
   assert.deepEqual(
     logout.route.stack.map((layer) => layer.name),
     ["authMiddleware", "superAdminMiddleware", "superAdminLogout"]
@@ -119,14 +126,16 @@ test("business sign-in cannot be used to enter the Super Admin account", async (
     { body: { email: "admin@example.com", password: "password" } },
     response
   );
-  assert.equal(response.statusCode, 403);
+  assert.equal(response.statusCode, 401);
   assert.equal(response.body.token, undefined);
 });
 
 test("business accounts cannot authenticate through Super Admin sign-in", async (t) => {
   const originalFindOne = User.findOne;
+  const originalCompare = bcrypt.compare;
   t.after(() => {
     User.findOne = originalFindOne;
+    bcrypt.compare = originalCompare;
   });
 
   User.findOne = () => ({
@@ -135,6 +144,7 @@ test("business accounts cannot authenticate through Super Admin sign-in", async 
       password: "not-used",
     }),
   });
+  bcrypt.compare = async () => true;
   const response = {
     statusCode: null,
     body: null,

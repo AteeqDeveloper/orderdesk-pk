@@ -1,8 +1,42 @@
 import User from "../models/user.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { randomBytes } from "node:crypto";
+import { JWT_ALGORITHM } from "../config/securityConfig.js";
 import { ensureFreeSubscription } from "../utils/subscriptionService.js";
 import { writeSuperAdminAudit } from "../utils/superAdminAudit.js";
+
+let dummyPasswordHash;
+
+const getDummyPasswordHash = () => {
+    if (!dummyPasswordHash) {
+        dummyPasswordHash = bcrypt.hash(randomBytes(32).toString("base64url"), 12);
+    }
+    return dummyPasswordHash;
+};
+
+const compareLoginPassword = async (password, passwordHash) => {
+    if (passwordHash) return bcrypt.compare(password, passwordHash);
+    return bcrypt.compare(password, await getDummyPasswordHash());
+};
+
+export const initializeAuthSecurity = async () => {
+    await getDummyPasswordHash();
+};
+
+const hasValidLoginInput = (email, password) =>
+    typeof email === "string" &&
+    email.trim().length > 0 &&
+    email.length <= 254 &&
+    typeof password === "string" &&
+    password.length > 0 &&
+    password.length <= 1024;
+
+const invalidCredentials = (res) =>
+    res.status(401).json({
+        success: false,
+        message: "Invalid email or password.",
+    });
 
 const signToken = (user) =>
     jwt.sign(
@@ -11,7 +45,7 @@ const signToken = (user) =>
             authVersion: user.authVersion || 0,
         },
         process.env.JWT_SECRET,
-        { expiresIn: "1d" }
+        { expiresIn: "1d", algorithm: JWT_ALGORITHM }
     );
 
 const publicAuthUser = (user) => ({
@@ -125,10 +159,10 @@ export const loginUser = async (req, res) => {
         const { email, password } = req.body || {};
 
         // Validate input
-        if (typeof email !== "string" || !email.trim() || typeof password !== "string" || !password) {
+        if (!hasValidLoginInput(email, password)) {
             return res.status(400).json({
                 success: false,
-                message: "Email and password are required",
+                message: "Invalid sign-in request.",
             });
         }
 
@@ -137,38 +171,18 @@ export const loginUser = async (req, res) => {
             email: email.trim().toLowerCase(),
         }).select("+password");
 
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: "Invalid email or password",
-            });
-        }
-
-        // Compare password with hashed password
-        const isPasswordValid = await bcrypt.compare(
+        const isPasswordValid = await compareLoginPassword(
             password,
-            user.password
+            user?.password
         );
 
-        if (!isPasswordValid) {
-            return res.status(401).json({
-                success: false,
-                message: "Invalid email or password",
-            });
-        }
-
-        if (user.role === "super_admin") {
-            return res.status(403).json({
-                success: false,
-                message: "Use the Super Admin sign-in page.",
-            });
-        }
-        if (user.status === "suspended") {
-            return res.status(403).json({
-                success: false,
-                code: "ACCOUNT_SUSPENDED",
-                message: "This account is suspended. Contact support.",
-            });
+        if (
+            !user ||
+            !isPasswordValid ||
+            user.role === "super_admin" ||
+            user.status === "suspended"
+        ) {
+            return invalidCredentials(res);
         }
 
         await ensureFreeSubscription(user._id);
@@ -194,36 +208,27 @@ export const loginUser = async (req, res) => {
 export const superAdminLogin = async (req, res) => {
     try {
         const { email, password } = req.body || {};
-        if (typeof email !== "string" || !email.trim() || typeof password !== "string" || !password) {
+        if (!hasValidLoginInput(email, password)) {
             return res.status(400).json({
                 success: false,
-                message: "Email and password are required.",
+                message: "Invalid sign-in request.",
             });
         }
 
         const user = await User.findOne({
             email: email.trim().toLowerCase(),
         }).select("+password");
-        if (!user || user.role !== "super_admin") {
-            return res.status(401).json({
-                success: false,
-                message: "Invalid email or password.",
-            });
-        }
-
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) {
-            return res.status(401).json({
-                success: false,
-                message: "Invalid email or password.",
-            });
-        }
-        if (user.status === "suspended") {
-            return res.status(403).json({
-                success: false,
-                code: "ACCOUNT_SUSPENDED",
-                message: "This account is suspended.",
-            });
+        const isPasswordValid = await compareLoginPassword(
+            password,
+            user?.password
+        );
+        if (
+            !user ||
+            user.role !== "super_admin" ||
+            !isPasswordValid ||
+            user.status === "suspended"
+        ) {
+            return invalidCredentials(res);
         }
 
         await writeSuperAdminAudit({
