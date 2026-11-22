@@ -1,5 +1,24 @@
 import mongoose from "mongoose";
 
+const planSnapshotSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    slug: { type: String, required: true },
+    description: { type: String, default: "" },
+    price: { type: Number, required: true, min: 0 },
+    priceConfigured: { type: Boolean, default: false },
+    currency: { type: String, enum: ["PKR"], default: "PKR" },
+    billingCycle: { type: String, enum: ["monthly", "yearly"], required: true },
+    features: { type: [String], default: [] },
+    limits: {
+      products: { type: Number, min: 0, default: null },
+      customers: { type: Number, min: 0, default: null },
+      ordersPerMonth: { type: Number, min: 0, default: null },
+    },
+  },
+  { _id: false }
+);
+
 const userSubscriptionSchema = new mongoose.Schema(
   {
     userId: {
@@ -13,6 +32,10 @@ const userSubscriptionSchema = new mongoose.Schema(
       ref: "SubscriptionPlan",
       required: true,
       index: true,
+    },
+    planSnapshot: {
+      type: planSnapshotSchema,
+      default: undefined,
     },
     status: {
       type: String,

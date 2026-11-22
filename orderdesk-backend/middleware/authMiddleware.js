@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import User from "../models/user.js";
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -33,6 +33,21 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: "User no longer exists",
+      });
+    }
+
+    if (user.status === "suspended") {
+      return res.status(403).json({
+        success: false,
+        code: "ACCOUNT_SUSPENDED",
+        message: "This account is suspended. Contact support.",
+      });
+    }
+
+    if ((decoded.authVersion ?? 0) !== (user.authVersion ?? 0)) {
+      return res.status(401).json({
+        success: false,
+        message: "Session expired. Please sign in again.",
       });
     }
 

@@ -5,6 +5,37 @@ import Product from "../models/Product.js";
 import SubscriptionPlan from "../models/SubscriptionPlan.js";
 import UserSubscription from "../models/UserSubscription.js";
 
+export function createPlanSnapshot(plan) {
+  const source = typeof plan.toObject === "function" ? plan.toObject() : plan;
+  return {
+    name: source.name,
+    slug: source.slug,
+    description: source.description || "",
+    price: source.price,
+    priceConfigured: Boolean(source.priceConfigured),
+    currency: source.currency || "PKR",
+    billingCycle: source.billingCycle,
+    features: [...(source.features || [])],
+    limits: {
+      products: source.limits?.products ?? null,
+      customers: source.limits?.customers ?? null,
+      ordersPerMonth: source.limits?.ordersPerMonth ?? null,
+    },
+  };
+}
+
+export async function snapshotSubscriptionsBeforePlanEdit(plan) {
+  const planSnapshot = createPlanSnapshot(plan);
+  await UserSubscription.updateMany(
+    {
+      planId: plan._id,
+      planSnapshot: { $exists: false },
+      $or: [{ isCurrent: true }, { status: "pending_payment" }],
+    },
+    { $set: { planSnapshot } }
+  );
+}
+
 export async function ensureDefaultSubscriptionPlans() {
   for (const plan of DEFAULT_SUBSCRIPTION_PLANS) {
     await SubscriptionPlan.updateOne(
@@ -36,6 +67,7 @@ export async function ensureFreeSubscription(userId, now = new Date()) {
       currency: "PKR",
       paymentProvider: "unconfigured",
       activatedAt: now,
+      planSnapshot: createPlanSnapshot(freePlan),
     });
   } catch (error) {
     if (error.code !== 11000) throw error;
@@ -72,8 +104,16 @@ export async function getCurrentSubscription(userId, now = new Date()) {
   if (!subscription) {
     subscription = await ensureFreeSubscription(userId, now);
   }
-  const plan = await SubscriptionPlan.findById(subscription.planId);
-  if (!plan) throw new Error("The current subscription plan no longer exists");
+  const storedPlan = await SubscriptionPlan.findById(subscription.planId);
+  if (!storedPlan) throw new Error("The current subscription plan no longer exists");
+  const plan = subscription.planSnapshot
+    ? {
+        ...storedPlan.toObject(),
+        ...subscription.planSnapshot.toObject(),
+        _id: storedPlan._id,
+        isActive: storedPlan.isActive,
+      }
+    : storedPlan;
   return { subscription, plan };
 }
 

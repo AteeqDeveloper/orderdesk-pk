@@ -13,6 +13,7 @@ import activityLogRoutes from "./routes/activityLogRoutes.js";
 import dataManagementRoutes from "./routes/dataManagementRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import subscriptionRoutes from "./routes/subscriptionRoutes.js";
+import superAdminRoutes from "./routes/superAdminRoutes.js";
 import {
   ensureDefaultSubscriptionPlans,
   expireSubscriptions,
@@ -36,6 +37,7 @@ app.use("/api/activity-logs", activityLogRoutes);
 app.use("/api/data-management", dataManagementRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
+app.use("/api/super-admin", superAdminRoutes);
 
 
 // Root route

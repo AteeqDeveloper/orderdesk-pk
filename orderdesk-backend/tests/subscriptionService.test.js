@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { DEFAULT_SUBSCRIPTION_PLANS } from "../config/subscriptionPlans.js";
 import {
   addBillingCycle,
+  createPlanSnapshot,
   ensureFreeSubscription,
   getMonthlyUsagePeriod,
   getUsageCount,
   getUsageLimitViolation,
+  snapshotSubscriptionsBeforePlanEdit,
 } from "../utils/subscriptionService.js";
 import Order from "../models/Order.js";
 import SubscriptionPlan from "../models/SubscriptionPlan.js";
@@ -46,6 +48,44 @@ test("billing cycle dates clamp at month and leap-year boundaries", () => {
     addBillingCycle(new Date("2024-02-29T12:00:00.000Z"), "yearly").toISOString(),
     "2025-02-28T12:00:00.000Z"
   );
+});
+
+test("plan snapshots preserve existing terms before a plan is edited", async (t) => {
+  const plan = {
+    _id: "plan-1",
+    name: "Starter",
+    slug: "starter",
+    description: "Current terms",
+    price: 250,
+    priceConfigured: true,
+    billingCycle: "monthly",
+    features: ["Reports"],
+    limits: { products: 500, customers: 1000, ordersPerMonth: 1000 },
+  };
+  const snapshot = createPlanSnapshot(plan);
+  plan.name = "Starter Plus";
+  plan.features.push("New feature");
+  assert.equal(snapshot.name, "Starter");
+  assert.deepEqual(snapshot.features, ["Reports"]);
+  assert.equal(snapshot.priceConfigured, true);
+
+  const originalUpdateMany = UserSubscription.updateMany;
+  t.after(() => {
+    UserSubscription.updateMany = originalUpdateMany;
+  });
+  let filter;
+  let update;
+  UserSubscription.updateMany = async (value, changes) => {
+    filter = value;
+    update = changes;
+  };
+  await snapshotSubscriptionsBeforePlanEdit({ ...plan, _id: "plan-1" });
+  assert.deepEqual(filter, {
+    planId: "plan-1",
+    planSnapshot: { $exists: false },
+    $or: [{ isCurrent: true }, { status: "pending_payment" }],
+  });
+  assert.equal(update.$set.planSnapshot.name, "Starter Plus");
 });
 
 test("monthly order periods follow the subscription anniversary", () => {

@@ -4,10 +4,13 @@ import SubscriptionPlan from "../models/SubscriptionPlan.js";
 import UserSubscription from "../models/UserSubscription.js";
 import {
   addBillingCycle,
+  createPlanSnapshot,
   ensureFreeSubscription,
   getCurrentSubscription,
   getSubscriptionOverview,
+  snapshotSubscriptionsBeforePlanEdit,
 } from "../utils/subscriptionService.js";
+import { writeSuperAdminAudit } from "../utils/superAdminAudit.js";
 
 const ADMIN_PAYMENT_METHODS = new Set([
   "manual_bank_transfer",
@@ -24,6 +27,8 @@ const EDITABLE_PLAN_FIELDS = new Set([
   "isActive",
 ]);
 const PLAN_LIMIT_FIELDS = new Set(["products", "customers", "ordersPerMonth"]);
+const validReason = (reason) =>
+  typeof reason === "string" && reason.trim().length >= 5 && reason.length <= 500;
 
 const publicPlan = (plan) => {
   const result = typeof plan.toObject === "function" ? plan.toObject() : { ...plan };
@@ -218,6 +223,7 @@ export const requestSubscription = async (req, res) => {
     createdSubscription = await UserSubscription.create({
       userId: req.user._id,
       planId: plan._id,
+      planSnapshot: createPlanSnapshot(plan),
       status: "pending_payment",
       isCurrent: false,
       startDate: now,
@@ -510,7 +516,11 @@ const validatePlanData = (body, { isUpdate = false, slug } = {}) => {
 };
 
 export const createSubscriptionPlan = async (req, res) => {
-  const validated = validatePlanData(req.body);
+  const { reason, ...planData } = req.body || {};
+  if (!validReason(reason)) {
+    return invalidRequest(res, "A reason of 5-500 characters is required.");
+  }
+  const validated = validatePlanData(planData);
   if (validated.error) return invalidRequest(res, validated.error);
   try {
     const plan = await SubscriptionPlan.create({
@@ -522,6 +532,14 @@ export const createSubscriptionPlan = async (req, res) => {
         ordersPerMonth: null,
       },
       isActive: validated.updates.isActive ?? true,
+    });
+    await writeSuperAdminAudit({
+      actorId: req.user._id,
+      action: "plan_created",
+      targetType: "plan",
+      targetId: plan._id,
+      reason: reason.trim(),
+      metadata: { slug: plan.slug },
     });
     return res.status(201).json({ success: true, data: { plan } });
   } catch (error) {
@@ -543,16 +561,35 @@ export const updateSubscriptionPlan = async (req, res) => {
   if (!isValidObjectId(req.params.planId)) {
     return invalidRequest(res, "Invalid plan ID.");
   }
+  const { reason, ...planData } = req.body || {};
+  if (!validReason(reason)) {
+    return invalidRequest(res, "A reason of 5-500 characters is required.");
+  }
   try {
     const plan = await SubscriptionPlan.findById(req.params.planId);
     if (!plan) return invalidRequest(res, "Plan not found.", 404);
-    const validated = validatePlanData(req.body, {
+    const validated = validatePlanData(planData, {
       isUpdate: true,
       slug: plan.slug,
     });
     if (validated.error) return invalidRequest(res, validated.error);
+    await snapshotSubscriptionsBeforePlanEdit(plan);
+    const wasActive = plan.isActive;
     Object.assign(plan, validated.updates);
     await plan.save();
+    const action = wasActive === plan.isActive
+      ? "plan_updated"
+      : plan.isActive
+        ? "plan_activated"
+        : "plan_deactivated";
+    await writeSuperAdminAudit({
+      actorId: req.user._id,
+      action,
+      targetType: "plan",
+      targetId: plan._id,
+      reason: reason.trim(),
+      metadata: { slug: plan.slug, changedFields: Object.keys(validated.updates) },
+    });
     return res.status(200).json({ success: true, data: { plan } });
   } catch (error) {
     if (error.name === "ValidationError") {
@@ -627,8 +664,7 @@ export const updateSubscriptionStatus = async (req, res) => {
   if (
     Object.keys(req.body || {}).some((key) => !["status", "reason"].includes(key)) ||
     !["cancelled", "expired", "past_due", "failed"].includes(status) ||
-    typeof reason !== "string" ||
-    reason.length > 500
+    !validReason(reason)
   ) {
     return invalidRequest(res, "Provide a supported status and optional reason.");
   }
@@ -667,6 +703,14 @@ export const updateSubscriptionStatus = async (req, res) => {
     if (subscription.userId && status !== "past_due") {
       await ensureFreeSubscription(subscription.userId);
     }
+    await writeSuperAdminAudit({
+      actorId: req.user._id,
+      action: "subscription_status_changed",
+      targetType: "subscription",
+      targetId: subscription._id,
+      reason: reason.trim(),
+      metadata: { status, userId: String(subscription.userId) },
+    });
     return res.status(200).json({
       success: true,
       data: { subscription },
@@ -736,15 +780,16 @@ export const verifyManualPayment = async (req, res) => {
   if (!isValidObjectId(req.params.paymentId)) {
     return invalidRequest(res, "Invalid payment ID.");
   }
-  const { transactionReference, paymentMethod } = req.body || {};
+  const { transactionReference, paymentMethod, reason } = req.body || {};
   if (
     Object.keys(req.body || {}).some(
-      (key) => !["transactionReference", "paymentMethod"].includes(key)
+      (key) => !["transactionReference", "paymentMethod", "reason"].includes(key)
     ) ||
     typeof transactionReference !== "string" ||
     !transactionReference.trim() ||
     transactionReference.trim().length > 160 ||
-    !ADMIN_PAYMENT_METHODS.has(paymentMethod)
+    !ADMIN_PAYMENT_METHODS.has(paymentMethod) ||
+    !validReason(reason)
   ) {
     return invalidRequest(
       res,
@@ -797,6 +842,18 @@ export const verifyManualPayment = async (req, res) => {
       if (duplicateReference) {
         return invalidRequest(res, "This transaction reference is already recorded.", 409);
       }
+      await writeSuperAdminAudit({
+        actorId: req.user._id,
+        action: "payment_verification_attempted",
+        targetType: "payment",
+        targetId: payment._id,
+        reason: reason.trim(),
+        metadata: {
+          amount: payment.amount,
+          method: paymentMethod,
+          transactionReference: normalizedReference,
+        },
+      });
       payment.status = "paid";
       payment.paymentMethod = paymentMethod;
       payment.paymentProvider = "manual";
@@ -808,6 +865,19 @@ export const verifyManualPayment = async (req, res) => {
     }
 
     const subscription = await activateVerifiedSubscription(payment, new Date());
+    await writeSuperAdminAudit({
+      actorId: req.user._id,
+      action: "payment_verified",
+      targetType: "payment",
+      targetId: payment._id,
+      reason: reason.trim(),
+      metadata: {
+        verification: true,
+        amount: payment.amount,
+        method: paymentMethod,
+        transactionReference: normalizedReference,
+      },
+    });
     return res.status(200).json({
       success: true,
       message:

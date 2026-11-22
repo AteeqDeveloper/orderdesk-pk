@@ -91,7 +91,9 @@ async function proxyRequest(request, context) {
       body,
       cache: "no-store",
     });
-    const isLogin = endpoint === "auth/login" && request.method === "POST";
+    const isLogin =
+      ["auth/login", "auth/super-admin/login"].includes(endpoint) &&
+      request.method === "POST";
     const payload = isLogin ? await upstream.text() : null;
     if (upstream.ok) {
       if (
@@ -139,6 +141,10 @@ async function proxyRequest(request, context) {
         response = NextResponse.json(data, { status: upstream.status });
         response.cookies.set(TOKEN_COOKIE, tokenValue, cookieOptions);
       }
+    }
+
+    if (endpoint === "auth/super-admin/logout" && upstream.ok) {
+      response.cookies.set(TOKEN_COOKIE, "", { ...cookieOptions, maxAge: 0 });
     }
 
     if (upstream.status === 401) {

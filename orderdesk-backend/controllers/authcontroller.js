@@ -1,7 +1,26 @@
-import User from "../models/User.js";
+import User from "../models/user.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { ensureFreeSubscription } from "../utils/subscriptionService.js";
+import { writeSuperAdminAudit } from "../utils/superAdminAudit.js";
+
+const signToken = (user) =>
+    jwt.sign(
+        {
+            userId: user._id.toString(),
+            authVersion: user.authVersion || 0,
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: "1d" }
+    );
+
+const publicAuthUser = (user) => ({
+    id: user._id,
+    fullName: user.fullName,
+    email: user.email,
+    businessName: user.businessName,
+    role: user.role,
+});
 
 export const registerUser = async (req, res) => {
     try {
@@ -14,7 +33,14 @@ export const registerUser = async (req, res) => {
         } = req.body;
 
         // Validate required fields
-        if (!fullName || !email || !password) {
+        if (
+            typeof fullName !== "string" ||
+            !fullName.trim() ||
+            typeof email !== "string" ||
+            !email.trim() ||
+            typeof password !== "string" ||
+            !password
+        ) {
             return res.status(400).json({
                 success: false,
                 message: "Full name, email and password are required",
@@ -96,10 +122,10 @@ export const registerUser = async (req, res) => {
 };
 export const loginUser = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password } = req.body || {};
 
         // Validate input
-        if (!email || !password) {
+        if (typeof email !== "string" || !email.trim() || typeof password !== "string" || !password) {
             return res.status(400).json({
                 success: false,
                 message: "Email and password are required",
@@ -131,30 +157,29 @@ export const loginUser = async (req, res) => {
             });
         }
 
+        if (user.role === "super_admin") {
+            return res.status(403).json({
+                success: false,
+                message: "Use the Super Admin sign-in page.",
+            });
+        }
+        if (user.status === "suspended") {
+            return res.status(403).json({
+                success: false,
+                code: "ACCOUNT_SUSPENDED",
+                message: "This account is suspended. Contact support.",
+            });
+        }
+
         await ensureFreeSubscription(user._id);
 
-        // Generate JWT token
-        const token = jwt.sign(
-            {
-                userId: user._id.toString(),
-            },
-            process.env.JWT_SECRET,
-            {
-                expiresIn: "1d",
-            }
-        );
+        const token = signToken(user);
 
         return res.status(200).json({
             success: true,
             message: "Login successful",
             token,
-            user: {
-                id: user._id,
-                fullName: user.fullName,
-                email: user.email,
-                businessName: user.businessName,
-                role: user.role,
-            },
+            user: publicAuthUser(user),
         });
     } catch (error) {
         console.error("Login error:", error.message);
@@ -162,6 +187,87 @@ export const loginUser = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Internal server error",
+        });
+    }
+};
+
+export const superAdminLogin = async (req, res) => {
+    try {
+        const { email, password } = req.body || {};
+        if (typeof email !== "string" || !email.trim() || typeof password !== "string" || !password) {
+            return res.status(400).json({
+                success: false,
+                message: "Email and password are required.",
+            });
+        }
+
+        const user = await User.findOne({
+            email: email.trim().toLowerCase(),
+        }).select("+password");
+        if (!user || user.role !== "super_admin") {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid email or password.",
+            });
+        }
+
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid email or password.",
+            });
+        }
+        if (user.status === "suspended") {
+            return res.status(403).json({
+                success: false,
+                code: "ACCOUNT_SUSPENDED",
+                message: "This account is suspended.",
+            });
+        }
+
+        await writeSuperAdminAudit({
+            actorId: user._id,
+            action: "super_admin_login",
+            targetType: "session",
+            targetId: user._id,
+        });
+        return res.status(200).json({
+            success: true,
+            message: "Super Admin sign-in successful.",
+            token: signToken(user),
+            user: publicAuthUser(user),
+        });
+    } catch (error) {
+        console.error("Super Admin login error:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Super Admin sign-in could not be completed.",
+        });
+    }
+};
+
+export const superAdminLogout = async (req, res) => {
+    try {
+        await writeSuperAdminAudit({
+            actorId: req.user._id,
+            action: "super_admin_logout",
+            targetType: "session",
+            targetId: req.user._id,
+        });
+        await User.updateOne(
+            { _id: req.user._id, role: "super_admin" },
+            { $inc: { authVersion: 1 } }
+        );
+        return res.status(200).json({
+            success: true,
+            message: "Super Admin signed out.",
+        });
+    } catch (error) {
+        console.error("Super Admin logout error:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Super Admin sign-out could not be completed.",
         });
     }
 };
@@ -176,6 +282,7 @@ export const getMe = async (req, res) => {
         businessName: req.user.businessName,
         phone: req.user.phone,
         role: req.user.role,
+        status: req.user.status || "active",
       },
     });
   } catch (error) {
