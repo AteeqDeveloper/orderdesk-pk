@@ -1,6 +1,7 @@
 import express from "express";
 
 import authMiddleware from "../middleware/authMiddleware.js";
+import usageLimitMiddleware from "../middleware/usageLimitMiddleware.js";
 
 import {
   createOrder,
@@ -14,7 +15,7 @@ const router = express.Router();
 // Every order endpoint requires a valid JWT
 router.use(authMiddleware);
 
-router.post("/", createOrder);
+router.post("/", usageLimitMiddleware("ordersPerMonth"), createOrder);
 router.get("/", getOrders);
 router.get("/:id", getOrderById);
 router.patch("/:id", updateOrder);

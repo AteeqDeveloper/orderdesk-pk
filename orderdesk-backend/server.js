@@ -12,6 +12,11 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import activityLogRoutes from "./routes/activityLogRoutes.js";
 import dataManagementRoutes from "./routes/dataManagementRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
+import subscriptionRoutes from "./routes/subscriptionRoutes.js";
+import {
+  ensureDefaultSubscriptionPlans,
+  expireSubscriptions,
+} from "./utils/subscriptionService.js";
 
 //initialize express app
 const app = express();
@@ -30,6 +35,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/activity-logs", activityLogRoutes);
 app.use("/api/data-management", dataManagementRoutes);
 app.use("/api/uploads", uploadRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
 
 
 // Root route
@@ -67,6 +73,15 @@ const startServer = async () => {
     }
 
     await connectDB();
+    await ensureDefaultSubscriptionPlans();
+    await expireSubscriptions();
+
+    const subscriptionLifecycleTimer = setInterval(() => {
+      expireSubscriptions().catch((error) => {
+        console.error("Subscription expiration check failed:", error.message);
+      });
+    }, 5 * 60 * 1000);
+    subscriptionLifecycleTimer.unref();
 
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

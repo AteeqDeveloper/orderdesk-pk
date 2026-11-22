@@ -1,6 +1,7 @@
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { ensureFreeSubscription } from "../utils/subscriptionService.js";
 
 export const registerUser = async (req, res) => {
     try {
@@ -50,6 +51,20 @@ export const registerUser = async (req, res) => {
             businessName,
             phone,
         });
+
+        try {
+            await ensureFreeSubscription(user._id);
+        } catch (subscriptionError) {
+            console.error(
+                "Free subscription assignment failed:",
+                subscriptionError.message
+            );
+            await User.deleteOne({ _id: user._id });
+            return res.status(503).json({
+                success: false,
+                message: "Account setup could not be completed. Please try again.",
+            });
+        }
 
         return res.status(201).json({
             success: true,
@@ -115,6 +130,8 @@ export const loginUser = async (req, res) => {
                 message: "Invalid email or password",
             });
         }
+
+        await ensureFreeSubscription(user._id);
 
         // Generate JWT token
         const token = jwt.sign(

@@ -3,6 +3,14 @@ import ActivityLog from "../models/ActivityLog.js";
 import Customer from "../models/Customer.js";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
+import {
+  getCurrentSubscription,
+  getUsageLimitViolation,
+} from "../utils/subscriptionService.js";
+import {
+  acquireUsageLocks,
+  UsageLockBusyError,
+} from "../utils/usageLock.js";
 
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_RECORDS = 50000;
@@ -778,10 +786,50 @@ const onlyFields = (record, fields) =>
 
 export const restoreBackup = async (req, res) => {
   let result;
+  let releaseUsageLocks;
   const created = { products: [], customers: [], orders: [] };
   try {
     const backup = JSON.parse(req.file.buffer.toString("utf8"));
     result = await getBackupValidation(backup, userIdFor(req));
+
+    releaseUsageLocks = await acquireUsageLocks(userIdFor(req), [
+      "products",
+      "customers",
+      "ordersPerMonth",
+    ]);
+    const { subscription, plan } = await getCurrentSubscription(userIdFor(req));
+    const usageChecks = await Promise.all([
+      getUsageLimitViolation(
+        userIdFor(req),
+        "products",
+        plan,
+        subscription,
+        result.pending.products.length
+      ),
+      getUsageLimitViolation(
+        userIdFor(req),
+        "customers",
+        plan,
+        subscription,
+        result.pending.customers.length
+      ),
+      getUsageLimitViolation(
+        userIdFor(req),
+        "ordersPerMonth",
+        plan,
+        subscription,
+        result.pending.orders.length
+      ),
+    ]);
+    const violation = usageChecks.find(Boolean);
+    if (violation) {
+      return res.status(403).json({
+        success: false,
+        code: "PLAN_LIMIT_REACHED",
+        message: `Restoring these records would exceed your ${violation.resource} limit.`,
+        data: violation,
+      });
+    }
 
     for (const record of result.pending.products) {
       const product = await Product.create({
@@ -801,6 +849,7 @@ export const restoreBackup = async (req, res) => {
       const order = await Order.create({
         ...onlyFields(record, orderAllowedFields),
         userId: userIdFor(req),
+        quotaCreatedAt: new Date(),
       });
       created.orders.push(order._id);
     }
@@ -830,6 +879,14 @@ export const restoreBackup = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error instanceof UsageLockBusyError) {
+      res.setHeader("Retry-After", "1");
+      return res.status(429).json({
+        success: false,
+        code: error.code,
+        message: "Another record is being created. Please retry the restore shortly.",
+      });
+    }
     try {
       if (created.orders.length) {
         await Order.deleteMany({ _id: { $in: created.orders }, userId: userIdFor(req) });
@@ -853,5 +910,13 @@ export const restoreBackup = async (req, res) => {
       success: false,
       message: "Restore failed. Newly added records were rolled back.",
     });
+  } finally {
+    if (releaseUsageLocks) {
+      try {
+        await releaseUsageLocks();
+      } catch (error) {
+        console.error("Subscription usage lock release failed:", error.message);
+      }
+    }
   }
 };

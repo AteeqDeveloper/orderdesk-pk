@@ -1,4 +1,5 @@
-import { Settings, Store, Mail, User, ShieldCheck } from "lucide-react";
+import { Settings, Store, Mail, User, ShieldCheck, CreditCard } from "lucide-react";
+import Link from "next/link";
 import { getServerUser } from "@/lib/serverApi";
 import DataManagement from "@/components/settings/DataManagement";
 
@@ -105,6 +106,26 @@ export default async function SettingsPage() {
       </div>
 
       <DataManagement />
+
+      <Link
+        href="/dashboard/settings/billing"
+        className="flex items-center justify-between rounded-xl border border-ink-100 bg-white p-5 shadow-card transition-colors hover:border-brand-200 sm:p-6"
+      >
+        <span className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+            <CreditCard className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <span>
+            <span className="block font-display text-base text-ink-900">
+              Subscription & Billing
+            </span>
+            <span className="mt-1 block text-xs text-ink-400">
+              Manage your plan, usage, and payment history
+            </span>
+          </span>
+        </span>
+        <span className="text-sm font-medium text-brand-800">View billing</span>
+      </Link>
     </div>
   );
 }

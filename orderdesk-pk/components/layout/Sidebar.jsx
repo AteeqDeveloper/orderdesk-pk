@@ -11,6 +11,7 @@ import {
   BarChart3,
   Bell,
   Settings,
+  CreditCard,
   NotebookPen,
   History,
   X,
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
   { href: "/dashboard/activity-logs", label: "Activity logs", icon: History },
+  { href: "/dashboard/pricing", label: "Plans", icon: CreditCard },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

@@ -161,6 +161,11 @@ const orderSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    quotaCreatedAt: {
+      type: Date,
+      default: Date.now,
+      select: false,
+    },
   },
   { timestamps: true }
 );
@@ -175,6 +180,8 @@ orderSchema.index(
     },
   }
 );
+orderSchema.index({ userId: 1, createdAt: 1 });
+orderSchema.index({ userId: 1, quotaCreatedAt: 1 });
 
 const Order = mongoose.model("Order", orderSchema);
 

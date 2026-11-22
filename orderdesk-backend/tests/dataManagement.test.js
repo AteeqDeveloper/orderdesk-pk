@@ -4,6 +4,9 @@ import ActivityLog from "../models/ActivityLog.js";
 import Customer from "../models/Customer.js";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
+import SubscriptionPlan from "../models/SubscriptionPlan.js";
+import UserSubscription from "../models/UserSubscription.js";
+import UsageLock from "../models/UsageLock.js";
 import dataManagementRoutes from "../routes/dataManagementRoutes.js";
 import {
   escapeCsvCell,
@@ -70,6 +73,37 @@ const makeLookupQuery = (records) => ({
   select() { return this; },
   lean: async () => records,
 });
+const stubUnlimitedSubscription = (t) => {
+  const originalFindOne = UserSubscription.findOne;
+  const originalFindById = SubscriptionPlan.findById;
+  const originalLockMethods = [
+    UsageLock.findOneAndUpdate,
+    UsageLock.deleteOne,
+    UsageLock.updateOne,
+  ];
+  UserSubscription.findOne = () => ({
+    sort: async () => ({
+      startDate: new Date("2025-01-01T00:00:00.000Z"),
+      planId: "test-plan",
+      isCurrent: true,
+    }),
+  });
+  SubscriptionPlan.findById = async () => ({
+    name: "Test",
+    slug: "test",
+    limits: { products: null, customers: null, ordersPerMonth: null },
+  });
+  UsageLock.findOneAndUpdate = async () => ({});
+  UsageLock.deleteOne = async () => ({ deletedCount: 1 });
+  UsageLock.updateOne = async () => ({ modifiedCount: 1 });
+  t.after(() => {
+    UserSubscription.findOne = originalFindOne;
+    SubscriptionPlan.findById = originalFindById;
+    UsageLock.findOneAndUpdate = originalLockMethods[0];
+    UsageLock.deleteOne = originalLockMethods[1];
+    UsageLock.updateOne = originalLockMethods[2];
+  });
+};
 
 const validBackup = (ownerId = "65a000000000000000000001") => ({
   format: "orderdesk-backup",
@@ -449,6 +483,7 @@ test("backup preview preserves historical order snapshots after source records w
 });
 
 test("restore merges missing records, skips IDs on repeat, and fills only blank settings", async (t) => {
+  stubUnlimitedSubscription(t);
   const originals = {
     find: [Product.find, Customer.find, Order.find],
     create: [Product.create, Customer.create, Order.create],
@@ -529,6 +564,7 @@ test("restore merges missing records, skips IDs on repeat, and fills only blank 
 });
 
 test("restore rolls back only records it inserted if a later record fails", async (t) => {
+  stubUnlimitedSubscription(t);
   const originals = {
     find: [Product.find, Customer.find, Order.find],
     create: [Product.create, Customer.create, Order.create],
