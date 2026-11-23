@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import cloudinary from "../config/cloudinary.js";
 
 export const isCloudinaryConfigured = () => {
@@ -14,15 +15,6 @@ export const isCloudinaryConfigured = () => {
       apiSecret !== "your_api_secret"
   );
 };
-
-function getSafeErrorMessage(error) {
-  return [process.env.CLOUDINARY_API_SECRET, process.env.CLOUDINARY_API_KEY]
-    .filter(Boolean)
-    .reduce(
-      (message, secret) => message.split(secret).join("[REDACTED]"),
-      String(error?.message || "Unknown Cloudinary error")
-    );
-}
 
 export const uploadProductImage = async (req, res) => {
   try {
@@ -41,10 +33,16 @@ export const uploadProductImage = async (req, res) => {
       });
     }
 
+    const userId = String(req.user._id);
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
-          folder: "orderdesk/products",
+          folder: `orderdesk/users/${userId}/products`,
+          public_id: randomUUID(),
+          use_filename: false,
+          unique_filename: false,
+          overwrite: false,
+          allowed_formats: ["jpg", "png", "webp"],
           resource_type: "image",
         },
         (error, uploadedImage) => {
@@ -67,7 +65,6 @@ export const uploadProductImage = async (req, res) => {
   } catch (error) {
     console.error("Cloudinary image upload failed:", {
       name: error?.name || "Error",
-      message: getSafeErrorMessage(error),
       httpCode: error?.http_code,
     });
 

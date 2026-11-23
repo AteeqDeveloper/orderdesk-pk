@@ -34,4 +34,13 @@ No Critical or High findings were reported in the reviewed scope.
 
 ## Validation limits
 
-The review did not inspect `.env` contents or validate deployed secret strength, MongoDB network/TLS/user privileges, production HTTPS and proxy behavior, Cloudinary credentials, provider enablement, or installed dependency vulnerabilities. No runtime or dependency vulnerability scan was performed. The supplied Step 20 request was truncated after “Prevent”, so the omitted implementation requirements were not inferred or acted upon.
+The review did not inspect `.env` contents or validate deployed secret strength, MongoDB network/TLS/user privileges, production HTTPS and proxy behavior, Cloudinary credentials, provider enablement, or installed dependency vulnerabilities. No runtime or dependency vulnerability scan was performed.
+
+## Step 20B upload review
+
+- Product-image uploads require authentication, are limited to 5 MB, and are limited to JPEG, PNG, and WebP based on both the declared MIME type and file signature.
+- Upload requests are limited per authenticated account to 20 requests per 15-minute window using the existing Mongo-backed rate-limit store.
+- The Next.js API proxy caps buffered product-image request bodies to 5 MB plus multipart overhead before forwarding them to Express.
+- Cloudinary uploads use a server-generated UUID and an account-specific folder. The client cannot choose a folder or filename.
+- Cloudinary's secure image URLs remain publicly retrievable; the per-account folder is an organizational namespace, not a Cloudinary access-control boundary.
+- There is no Cloudinary image-deletion endpoint. Product and variant records store image URLs rather than Cloudinary public IDs, and deleting/replacing a product image does not remove its Cloudinary asset. No deletion workflow was added; a future one must persist the public ID and verify product ownership and references before deleting an asset.

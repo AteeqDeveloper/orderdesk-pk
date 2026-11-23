@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 const TOKEN_COOKIE = "orderdesk_token";
 const TOKEN_MAX_AGE = 60 * 60 * 24;
 const MAX_BACKUP_UPLOAD_BYTES = 10 * 1024 * 1024 + 64 * 1024;
+const MAX_PRODUCT_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024 + 64 * 1024;
 
 async function readLimitedBody(request, maxBytes) {
   const reader = request.body?.getReader();
@@ -66,18 +67,36 @@ async function proxyRequest(request, context) {
       const isBackupUpload =
         request.method === "POST" &&
         /^data-management\/backup\/(validate|restore)$/.test(endpoint);
-      if (isBackupUpload) {
+      const isProductImageUpload =
+        request.method === "POST" && endpoint === "uploads/product-image";
+      const maxUploadBytes = isBackupUpload
+        ? MAX_BACKUP_UPLOAD_BYTES
+        : isProductImageUpload
+          ? MAX_PRODUCT_IMAGE_UPLOAD_BYTES
+          : null;
+
+      if (maxUploadBytes !== null) {
         const contentLength = Number(request.headers.get("content-length"));
-        if (Number.isFinite(contentLength) && contentLength > MAX_BACKUP_UPLOAD_BYTES) {
+        if (Number.isFinite(contentLength) && contentLength > maxUploadBytes) {
           return NextResponse.json(
-            { success: false, message: "Backup files must be 10 MB or smaller." },
+            {
+              success: false,
+              message: isBackupUpload
+                ? "Backup files must be 10 MB or smaller."
+                : "Image must be 5 MB or smaller.",
+            },
             { status: 413 }
           );
         }
-        body = await readLimitedBody(request, MAX_BACKUP_UPLOAD_BYTES);
+        body = await readLimitedBody(request, maxUploadBytes);
         if (body === null) {
           return NextResponse.json(
-            { success: false, message: "Backup files must be 10 MB or smaller." },
+            {
+              success: false,
+              message: isBackupUpload
+                ? "Backup files must be 10 MB or smaller."
+                : "Image must be 5 MB or smaller.",
+            },
             { status: 413 }
           );
         }

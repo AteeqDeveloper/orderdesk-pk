@@ -43,6 +43,12 @@ const superAdminAuditLogSchema = new mongoose.Schema(
       maxlength: 500,
       default: "",
     },
+    idempotencyKey: {
+      type: String,
+      trim: true,
+      maxlength: 240,
+      default: "",
+    },
     metadata: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
@@ -54,6 +60,15 @@ const superAdminAuditLogSchema = new mongoose.Schema(
 superAdminAuditLogSchema.index({ createdAt: -1, _id: -1 });
 superAdminAuditLogSchema.index({ actorId: 1, createdAt: -1 });
 superAdminAuditLogSchema.index({ targetType: 1, targetId: 1, createdAt: -1 });
+superAdminAuditLogSchema.index(
+  { idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      idempotencyKey: { $type: "string", $gt: "" },
+    },
+  }
+);
 
 for (const operation of [
   "updateOne",

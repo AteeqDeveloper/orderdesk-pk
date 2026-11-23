@@ -772,7 +772,18 @@ const activateVerifiedSubscription = async (payment, now) => {
     },
     { new: true, runValidators: true }
   );
-  if (!activated) throw new Error("Subscription activation could not be completed");
+  if (!activated) {
+    const concurrentlyActivated = await UserSubscription.findOne({
+      _id: subscription._id,
+      userId: payment.userId,
+      status: { $in: ["active", "cancel_at_period_end"] },
+      isCurrent: true,
+    });
+    if (concurrentlyActivated) {
+      return concurrentlyActivated;
+    }
+    throw new Error("Subscription activation could not be completed");
+  }
   return activated;
 };
 
@@ -798,7 +809,7 @@ export const verifyManualPayment = async (req, res) => {
   }
 
   try {
-    const payment = await Payment.findById(req.params.paymentId);
+    let payment = await Payment.findById(req.params.paymentId);
     if (!payment) return invalidRequest(res, "Payment not found.", 404);
     const subscriptionRequest = await UserSubscription.findOne({
       _id: payment.subscriptionId,
@@ -807,10 +818,55 @@ export const verifyManualPayment = async (req, res) => {
     if (!subscriptionRequest) {
       return invalidRequest(res, "The subscription request is no longer eligible for activation.", 409);
     }
+    const planSnapshot =
+      typeof subscriptionRequest.planSnapshot?.toObject === "function"
+        ? subscriptionRequest.planSnapshot.toObject()
+        : subscriptionRequest.planSnapshot;
+    if (
+      String(subscriptionRequest.userId) !== String(payment.userId) ||
+      !Number.isFinite(subscriptionRequest.priceAtPurchase) ||
+      subscriptionRequest.priceAtPurchase <= 0 ||
+      payment.amount !== subscriptionRequest.priceAtPurchase ||
+      payment.currency !== subscriptionRequest.currency ||
+      payment.currency !== "PKR" ||
+      !["monthly", "yearly"].includes(subscriptionRequest.billingCycle) ||
+      (planSnapshot &&
+        (planSnapshot.price !== subscriptionRequest.priceAtPurchase ||
+          planSnapshot.currency !== subscriptionRequest.currency ||
+          planSnapshot.billingCycle !== subscriptionRequest.billingCycle ||
+          planSnapshot.slug === "free"))
+    ) {
+      return invalidRequest(
+        res,
+        "The payment does not match the subscription request.",
+        409
+      );
+    }
+    const normalizedReference = transactionReference.trim();
+    if (
+      payment.status === "paid" &&
+      (payment.transactionReference !== normalizedReference ||
+        payment.paymentMethod !== paymentMethod)
+    ) {
+      return invalidRequest(res, "This payment was already verified with different details.", 409);
+    }
     const alreadyCurrent =
       subscriptionRequest.isCurrent &&
       ["active", "cancel_at_period_end"].includes(subscriptionRequest.status);
     if (payment.status === "paid" && alreadyCurrent) {
+      await writeSuperAdminAudit({
+        actorId: req.user._id,
+        action: "payment_verified",
+        targetType: "payment",
+        targetId: payment._id,
+        reason: reason.trim(),
+        metadata: {
+          verification: true,
+          amount: payment.amount,
+          method: paymentMethod,
+        },
+        idempotencyKey: `payment-verified:${payment._id}`,
+      });
       return res.status(200).json({
         success: true,
         message: "This payment was already verified and processed.",
@@ -822,14 +878,6 @@ export const verifyManualPayment = async (req, res) => {
     }
     if (subscriptionRequest.status !== "pending_payment") {
       return invalidRequest(res, "The subscription request is no longer eligible for activation.", 409);
-    }
-    const normalizedReference = transactionReference.trim();
-    if (
-      payment.status === "paid" &&
-      (payment.transactionReference !== normalizedReference ||
-        payment.paymentMethod !== paymentMethod)
-    ) {
-      return invalidRequest(res, "This payment was already verified with different details.", 409);
     }
     if (payment.status !== "paid") {
       if (payment.status !== "pending") {
@@ -851,17 +899,37 @@ export const verifyManualPayment = async (req, res) => {
         metadata: {
           amount: payment.amount,
           method: paymentMethod,
-          transactionReference: normalizedReference,
         },
       });
-      payment.status = "paid";
-      payment.paymentMethod = paymentMethod;
-      payment.paymentProvider = "manual";
-      payment.transactionReference = normalizedReference;
-      payment.paidAt = new Date();
-      payment.verifiedAt = payment.paidAt;
-      payment.verifiedBy = req.user._id;
-      await payment.save();
+      const verifiedAt = new Date();
+      const updatedPayment = await Payment.findOneAndUpdate(
+        { _id: payment._id, status: "pending" },
+        {
+          $set: {
+            status: "paid",
+            paymentMethod,
+            paymentProvider: "manual",
+            transactionReference: normalizedReference,
+            paidAt: verifiedAt,
+            verifiedAt,
+            verifiedBy: req.user._id,
+          },
+        },
+        { new: true, runValidators: true }
+      );
+      if (updatedPayment) {
+        payment = updatedPayment;
+      } else {
+        const latestPayment = await Payment.findById(payment._id);
+        if (
+          latestPayment?.status !== "paid" ||
+          latestPayment.transactionReference !== normalizedReference ||
+          latestPayment.paymentMethod !== paymentMethod
+        ) {
+          return invalidRequest(res, "This payment was already processed.", 409);
+        }
+        payment = latestPayment;
+      }
     }
 
     const subscription = await activateVerifiedSubscription(payment, new Date());
@@ -875,8 +943,8 @@ export const verifyManualPayment = async (req, res) => {
         verification: true,
         amount: payment.amount,
         method: paymentMethod,
-        transactionReference: normalizedReference,
       },
+      idempotencyKey: `payment-verified:${payment._id}`,
     });
     return res.status(200).json({
       success: true,
