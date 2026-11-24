@@ -2,7 +2,7 @@ const DEVELOPMENT_ORIGINS = ["http://localhost:3000"];
 const ALLOWED_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 const ALLOWED_HEADERS = ["Accept", "Authorization", "Content-Type", "Idempotency-Key"];
 
-const validateOrigin = (value, isProduction) => {
+export const validateOrigin = (value, isProduction) => {
   if (typeof value !== "string" || value.includes("*")) {
     throw new Error(
       "FRONTEND_ORIGINS must contain exact HTTP(S) origins without paths or wildcards."
@@ -23,7 +23,8 @@ const validateOrigin = (value, isProduction) => {
     parsed.search ||
     parsed.hash ||
     (isProduction &&
-      (parsed.hostname === "localhost" ||
+      (parsed.protocol !== "https:" ||
+        parsed.hostname === "localhost" ||
         parsed.hostname === "127.0.0.1" ||
         parsed.hostname === "[::1]"))
   ) {

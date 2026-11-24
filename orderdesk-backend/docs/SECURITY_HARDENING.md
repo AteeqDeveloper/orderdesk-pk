@@ -32,8 +32,11 @@ authorization to Express.
 
 ## JWT signing key
 
-`JWT_SECRET` must be at least 32 UTF-8 bytes and pass a minimum estimated-entropy
-check; common placeholder values are rejected. Generate a new value with Node:
+`JWT_SECRET` must be at least 32 UTF-8 bytes, contain at least 16 distinct
+characters, and avoid common placeholder values. The application cannot prove
+that a manually supplied secret was generated randomly, so provision secrets
+with a cryptographically secure secret manager or generator. Generate a new value
+with Node:
 
 ```powershell
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"

@@ -13,29 +13,19 @@ const PLACEHOLDER_SECRETS = new Set([
   "test-secret",
 ]);
 
-const estimateEntropyBits = (value) => {
-  const counts = new Map();
-  for (const character of value) {
-    counts.set(character, (counts.get(character) || 0) + 1);
-  }
-  let entropyPerCharacter = 0;
-  for (const count of counts.values()) {
-    const probability = count / value.length;
-    entropyPerCharacter -= probability * Math.log2(probability);
-  }
-  return entropyPerCharacter * value.length;
-};
-
 export function validateJwtSecret(secret) {
+  const normalized = typeof secret === "string" ? secret.toLowerCase() : "";
+  const uniqueCharacterCount =
+    typeof secret === "string" ? new Set(secret).size : 0;
   if (
     typeof secret !== "string" ||
     secret.trim() !== secret ||
     Buffer.byteLength(secret, "utf8") < 32 ||
-    PLACEHOLDER_SECRETS.has(secret.toLowerCase()) ||
-    estimateEntropyBits(secret) < 128
+    PLACEHOLDER_SECRETS.has(normalized) ||
+    uniqueCharacterCount < 16
   ) {
     throw new Error(
-      "JWT_SECRET is missing or weak. Configure a cryptographically random secret with at least 32 bytes and 128 estimated bits of entropy."
+      "JWT_SECRET is missing or weak. Configure a cryptographically random secret with at least 32 bytes and at least 16 distinct characters."
     );
   }
   return secret;
@@ -51,4 +41,45 @@ export function parseTrustedProxyHops(value) {
     throw new Error("TRUST_PROXY_HOPS must be a non-negative integer.");
   }
   return hops;
+}
+
+export function validateMongoUri(value) {
+  if (typeof value !== "string" || value.trim() !== value) {
+    throw new Error("MONGO_URI is missing or invalid.");
+  }
+
+  const uri = value.trim();
+  if (
+    !/^mongodb(?:\+srv)?:\/\//.test(uri) ||
+    /^(?:mongodb(?:\+srv)?:\/\/)?(?:<[^>]+>|change-me|example)/i.test(uri)
+  ) {
+    throw new Error("MONGO_URI is missing or invalid.");
+  }
+  return uri;
+}
+
+export function validateProductionEnvironment(env = process.env) {
+  validateJwtSecret(env.JWT_SECRET);
+  validateMongoUri(env.MONGO_URI);
+
+  if (env.NODE_ENV === "production") {
+    const required = [
+      "FRONTEND_ORIGINS",
+      "CLOUDINARY_CLOUD_NAME",
+      "CLOUDINARY_API_KEY",
+      "CLOUDINARY_API_SECRET",
+    ];
+    const missing = required.filter((name) => {
+      const value = env[name]?.trim();
+      return (
+        !value ||
+        /^(?:change-me|changeme|example|placeholder|your[_-].*)$/i.test(value)
+      );
+    });
+    if (missing.length > 0) {
+      throw new Error(
+        `Production environment variables missing or placeholder: ${missing.join(", ")}`
+      );
+    }
+  }
 }

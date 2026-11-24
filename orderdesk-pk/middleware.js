@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getApiUrl } from "@/lib/apiUrl";
 
 const PROTECTED_PREFIXES = ["/dashboard"];
 const SUPER_ADMIN_PREFIX = "/super-admin";
@@ -24,7 +25,7 @@ export async function middleware(request) {
     (isProtectedRoute || authRoutes.includes(pathname) || isSuperAdminLogin)
   ) {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",

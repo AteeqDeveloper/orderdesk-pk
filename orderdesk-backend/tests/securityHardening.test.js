@@ -13,10 +13,13 @@ import {
   createCorsOptions,
   createCorsOriginGuard,
   getTrustedFrontendOrigins,
+  validateOrigin,
 } from "../config/corsConfig.js";
 import {
   JWT_ALGORITHM,
   parseTrustedProxyHops,
+  validateMongoUri,
+  validateProductionEnvironment,
   validateJwtSecret,
 } from "../config/securityConfig.js";
 import { createLoginLimiters } from "../middleware/loginRateLimiter.js";
@@ -122,6 +125,45 @@ test("login limiters enforce account and IP ceilings with expiring 429 lockouts"
   assert.equal(afterWindow.status, 401);
 });
 
+test("origin validation allows exact local HTTP origins only outside production", () => {
+  assert.equal(
+    validateOrigin("http://localhost:3000", false),
+    "http://localhost:3000"
+  );
+  assert.deepEqual(
+    getTrustedFrontendOrigins({
+      NODE_ENV: "development",
+      FRONTEND_ORIGINS: "http://localhost:3000",
+    }),
+    ["http://localhost:3000"]
+  );
+
+  assert.throws(
+    () => validateOrigin("http://localhost:3000", true),
+    /FRONTEND_ORIGINS/
+  );
+  assert.throws(
+    () => validateOrigin("http://app.example.com", true),
+    /FRONTEND_ORIGINS/
+  );
+  assert.equal(
+    validateOrigin("https://app.example.com", true),
+    "https://app.example.com"
+  );
+  assert.throws(
+    () => validateOrigin("https://app.example.com/dashboard", false),
+    /FRONTEND_ORIGINS/
+  );
+  assert.throws(
+    () => validateOrigin("https://user:pass@app.example.com", false),
+    /FRONTEND_ORIGINS/
+  );
+  assert.throws(
+    () => validateOrigin("https://*.example.com", false),
+    /FRONTEND_ORIGINS/
+  );
+});
+
 test("production CORS requires exact configured origins and blocks untrusted origins", async (t) => {
   assert.throws(
     () => getTrustedFrontendOrigins({ NODE_ENV: "production" }),
@@ -196,6 +238,40 @@ test("JWT startup validation rejects missing, placeholder, and weak secrets", ()
   assert.equal(parseTrustedProxyHops(undefined), 0);
   assert.equal(parseTrustedProxyHops("2"), 2);
   assert.throws(() => parseTrustedProxyHops("true"), /TRUST_PROXY_HOPS/);
+});
+
+test("production startup validation rejects missing secrets and Mongo placeholders", () => {
+  assert.throws(
+    () => validateMongoUri("mongodb://<host>/<database>"),
+    /MONGO_URI/
+  );
+  assert.equal(
+    validateMongoUri("mongodb://localhost:27017/orderdesk"),
+    "mongodb://localhost:27017/orderdesk"
+  );
+
+  const secret = randomBytes(32).toString("base64url");
+  assert.throws(
+    () =>
+      validateProductionEnvironment({
+        NODE_ENV: "production",
+        JWT_SECRET: secret,
+        MONGO_URI: "mongodb://localhost:27017/orderdesk",
+      }),
+    /FRONTEND_ORIGINS/
+  );
+
+  assert.doesNotThrow(() =>
+    validateProductionEnvironment({
+      NODE_ENV: "production",
+      JWT_SECRET: secret,
+      MONGO_URI: "mongodb+srv://user:password@example.mongodb.net/orderdesk",
+      FRONTEND_ORIGINS: "https://app.example.com",
+      CLOUDINARY_CLOUD_NAME: "test-cloud",
+      CLOUDINARY_API_KEY: "test-key",
+      CLOUDINARY_API_SECRET: "test-secret",
+    })
+  );
 });
 
 test("JWT verification pins HS256 and rejects invalid algorithms", async (t) => {

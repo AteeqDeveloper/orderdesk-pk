@@ -8,7 +8,11 @@ import {
 } from "./config/corsConfig.js";
 import connectDB from "./config/db.js";
 import LoginRateLimit from "./models/LoginRateLimit.js";
-import { parseTrustedProxyHops, validateJwtSecret } from "./config/securityConfig.js";
+import {
+  parseTrustedProxyHops,
+  validateProductionEnvironment,
+} from "./config/securityConfig.js";
+import mongoose from "mongoose";
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
@@ -62,6 +66,16 @@ app.use("/api/uploads", uploadRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/super-admin", superAdminRoutes);
 
+app.get("/health", (_req, res) => {
+  const databaseStates = ["disconnected", "connected", "connecting", "disconnecting"];
+  const database = databaseStates[mongoose.connection.readyState] || "unknown";
+  const healthy = database === "connected";
+  res.status(healthy ? 200 : 503).json({
+    success: healthy,
+    status: healthy ? "ok" : "degraded",
+    database,
+  });
+});
 
 // Root route
 app.get("/", (req, res) => {
@@ -88,7 +102,7 @@ const cloudinaryEnvVariables = [
 
 const startServer = async () => {
   try {
-    validateJwtSecret(process.env.JWT_SECRET);
+    validateProductionEnvironment(process.env);
     if (startupConfigurationError) throw startupConfigurationError;
     await initializeAuthSecurity();
 

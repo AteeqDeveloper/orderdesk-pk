@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
+import { getApiUrl } from "@/lib/apiUrl";
 
 const TOKEN_COOKIE = "orderdesk_token";
 const TOKEN_MAX_AGE = 60 * 60 * 24;
@@ -35,6 +36,15 @@ async function readLimitedBody(request, maxBytes) {
 async function proxyRequest(request, context) {
   const { path = [] } = await context.params;
   const endpoint = path.join("/");
+  if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    const origin = request.headers.get("origin");
+    if (origin && origin !== request.nextUrl.origin) {
+      return NextResponse.json(
+        { success: false, message: "Origin is not allowed." },
+        { status: 403 }
+      );
+    }
+  }
   const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -49,7 +59,7 @@ async function proxyRequest(request, context) {
     return response;
   }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+  const apiUrl = getApiUrl();
   const headers = new Headers();
   const contentType = request.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);

@@ -1,11 +1,12 @@
 import { cookies } from "next/headers";
 import { ApiError } from "@/lib/api";
+import { getApiUrl } from "@/lib/apiUrl";
 
 export async function serverApiRequest(path, options = {}) {
   const token = (await cookies()).get("orderdesk_token")?.value;
   if (!token) throw new ApiError("Please log in to continue.", 401);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+  const apiUrl = getApiUrl();
   const response = await fetch(`${apiUrl}/api/${path.replace(/^\/+/, "")}`, {
     ...options,
     headers: {
