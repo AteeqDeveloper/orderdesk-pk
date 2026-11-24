@@ -21,15 +21,21 @@ export const validateOrigin = (value, isProduction) => {
     parsed.password ||
     parsed.pathname !== "/" ||
     parsed.search ||
-    parsed.hash ||
-    (isProduction &&
-      (parsed.protocol !== "https:" ||
-        parsed.hostname === "localhost" ||
-        parsed.hostname === "127.0.0.1" ||
-        parsed.hostname === "[::1]"))
+    parsed.hash
   ) {
     throw new Error(
       "FRONTEND_ORIGINS must contain exact HTTP(S) origins without paths or wildcards."
+    );
+  }
+  if (
+    isProduction &&
+    (parsed.protocol !== "https:" ||
+      parsed.hostname === "localhost" ||
+      parsed.hostname === "127.0.0.1" ||
+      parsed.hostname === "[::1]")
+  ) {
+    throw new Error(
+      "FRONTEND_ORIGINS in production must use HTTPS and cannot be localhost or a loopback address."
     );
   }
   return parsed.origin;
