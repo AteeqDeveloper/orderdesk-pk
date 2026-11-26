@@ -1,15 +1,22 @@
 const PLACEHOLDER_PATTERN = /^(?:change-me|changeme|example|placeholder|https?:\/\/<[^>]+>)/i;
 
 export function getApiUrl(env = process.env) {
-  const apiUrl = env.NEXT_PUBLIC_API_URL?.trim();
+  let apiUrl = env.NEXT_PUBLIC_API_URL?.trim();
 
   if (!apiUrl || PLACEHOLDER_PATTERN.test(apiUrl)) {
     if (env.NODE_ENV === "production") {
       throw new Error(
-        "NEXT_PUBLIC_API_URL is missing or placeholder. Configure the intended production backend URL."
+        "NEXT_PUBLIC_API_URL is missing or placeholder. Configure the backend URL in environment variables."
       );
     }
     return "http://localhost:5000";
+  }
+
+  // Automatically prepend https:// if protocol was omitted (e.g. backend.up.railway.app)
+  if (!/^https?:\/\//i.test(apiUrl)) {
+    apiUrl = apiUrl.startsWith("localhost") || apiUrl.startsWith("127.0.0.1")
+      ? `http://${apiUrl}`
+      : `https://${apiUrl}`;
   }
 
   let parsed;
@@ -21,18 +28,23 @@ export function getApiUrl(env = process.env) {
 
   if (
     !["http:", "https:"].includes(parsed.protocol) ||
-    parsed.origin !== apiUrl ||
     parsed.username ||
     parsed.password
   ) {
     throw new Error(
-      "NEXT_PUBLIC_API_URL must be an exact HTTP(S) origin without a path or credentials."
+      "NEXT_PUBLIC_API_URL must be a valid HTTP(S) URL without credentials."
     );
   }
 
-  if (env.NODE_ENV === "production" && parsed.protocol !== "https:") {
+  if (
+    env.NODE_ENV === "production" &&
+    parsed.protocol !== "https:" &&
+    parsed.hostname !== "localhost" &&
+    parsed.hostname !== "127.0.0.1"
+  ) {
     throw new Error("NEXT_PUBLIC_API_URL must use HTTPS in production.");
   }
 
+  // Returns exact origin (protocol + host + port), naturally stripping trailing slashes and /api paths
   return parsed.origin;
 }

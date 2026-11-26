@@ -59,19 +59,19 @@ async function proxyRequest(request, context) {
     return response;
   }
 
-  const apiUrl = getApiUrl();
-  const headers = new Headers();
-  const contentType = request.headers.get("content-type");
-  if (contentType) headers.set("content-type", contentType);
-  const idempotencyKey = request.headers.get("idempotency-key");
-  if (idempotencyKey) headers.set("idempotency-key", idempotencyKey);
-
-  const token = request.cookies.get(TOKEN_COOKIE)?.value;
-  if (token) headers.set("authorization", `Bearer ${token}`);
-
-  const query = new URL(request.url).search;
-
   try {
+    const apiUrl = getApiUrl();
+    const headers = new Headers();
+    const contentType = request.headers.get("content-type");
+    if (contentType) headers.set("content-type", contentType);
+    const idempotencyKey = request.headers.get("idempotency-key");
+    if (idempotencyKey) headers.set("idempotency-key", idempotencyKey);
+
+    const token = request.cookies.get(TOKEN_COOKIE)?.value;
+    if (token) headers.set("authorization", `Bearer ${token}`);
+
+    const query = new URL(request.url).search;
+
     let body;
     if (!["GET", "HEAD"].includes(request.method)) {
       const isBackupUpload =
