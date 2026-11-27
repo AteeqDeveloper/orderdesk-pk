@@ -9,7 +9,8 @@ export const metadata = {
   title: "Products — OrderDesk PK",
 };
 
-export default async function ProductsPage({ searchParams }) {
+export default async function ProductsPage(props) {
+  const searchParams = await props.searchParams;
   const search = searchParams?.search || "";
   const category = searchParams?.category || "";
   const status = searchParams?.status || "";

@@ -11,7 +11,8 @@ export const metadata = {
   description: "Track stock levels, low-stock alerts and inventory value for all your products.",
 };
 
-export default async function InventoryPage({ searchParams }) {
+export default async function InventoryPage(props) {
+  const searchParams = await props.searchParams;
   const search = searchParams?.search || "";
   const category = searchParams?.category || "";
   const stockStatus = searchParams?.stockStatus || "";

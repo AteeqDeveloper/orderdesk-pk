@@ -13,7 +13,8 @@ export const metadata = {
   title: "Orders — OrderDesk PK",
 };
 
-export default async function OrdersPage({ searchParams }) {
+export default async function OrdersPage(props) {
+  const searchParams = await props.searchParams;
   const status = searchParams?.status || "";
   const search = searchParams?.search || "";
   const hasFilters = Boolean(status || search);

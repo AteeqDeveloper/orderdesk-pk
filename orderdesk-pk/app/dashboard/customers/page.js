@@ -8,7 +8,8 @@ export const metadata = {
   title: "Customers — OrderDesk PK",
 };
 
-export default async function CustomersPage({ searchParams }) {
+export default async function CustomersPage(props) {
+  const searchParams = await props.searchParams;
   const user = await getServerUser();
 
   const search = searchParams?.search || "";

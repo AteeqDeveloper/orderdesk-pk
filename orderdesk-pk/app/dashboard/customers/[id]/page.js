@@ -13,11 +13,18 @@ export const metadata = {
   title: "Customer — OrderDesk PK",
 };
 
-export default async function CustomerDetailPage({ params }) {
+export default async function CustomerDetailPage(props) {
+  const params = await props.params;
+  const id = params?.id;
+
+  if (!id || id === "undefined" || id === "null") {
+    notFound();
+  }
+
   const user = await getServerUser();
   const [{ customer, error }, { orders, totalOrders }] = await Promise.all([
-    getCustomerById(serverApiRequest, params.id),
-    getCustomerOrders(serverApiRequest, params.id),
+    getCustomerById(serverApiRequest, id),
+    getCustomerOrders(serverApiRequest, id),
   ]);
 
   if (error || !customer) {

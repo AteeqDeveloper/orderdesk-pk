@@ -8,10 +8,18 @@ export const metadata = {
   title: "Edit product — OrderDesk PK",
 };
 
-export default async function EditProductPage({ params, searchParams }) {
+export default async function EditProductPage(props) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
+  const id = params?.id;
+
+  if (!id || id === "undefined" || id === "null") {
+    notFound();
+  }
+
   const user = await getServerUser();
   const [{ product, error }, { categories }] = await Promise.all([
-    getProductById(serverApiRequest, params.id),
+    getProductById(serverApiRequest, id),
     getProductCategories(serverApiRequest),
   ]);
 
@@ -38,7 +46,7 @@ export default async function EditProductPage({ params, searchParams }) {
       </div>
 
       <ProductForm
-        userId={user.id}
+        userId={user?.id}
         product={productFields}
         categories={categories}
         initialSuccessMessage={

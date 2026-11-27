@@ -11,8 +11,15 @@ export const metadata = {
   title: "Order Details — OrderDesk PK",
 };
 
-export default async function OrderDetailPage({ params }) {
-  const { order, error } = await getOrderById(serverApiRequest, params.id);
+export default async function OrderDetailPage(props) {
+  const params = await props.params;
+  const id = params?.id;
+
+  if (!id || id === "undefined" || id === "null") {
+    notFound();
+  }
+
+  const { order, error } = await getOrderById(serverApiRequest, id);
 
   if (error || !order) {
     notFound();
